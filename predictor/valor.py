@@ -28,6 +28,7 @@ CASAS = {
 REFERENCIAS = ["PS", "BFE"]
 REFERENCIAS_CIERRE = ["PSC", "BFEC", "AvgC"]
 
+# Las casas que no tienen columnas de hándicap asiático simplemente no se tienen en cuenta ahí.
 MERCADOS = {
     "1X2": [("1", "H"), ("X", "D"), ("2", "A")],
     "Goles 2.5": [("Goles +2.5", ">2.5"), ("Goles -2.5", "<2.5")],
@@ -86,7 +87,9 @@ class Oportunidad:
     cuota: float
     prob_justa: float
     referencia: str
+    familia: str = ""
     resultado: bool | None = None
+    beneficio: float | None = None  # por euro apostado (en hándicap asiático puede ser medio o nulo)
     clv: float | None = None
 
     @property
@@ -117,8 +120,76 @@ def _acierto(fila: dict, mercado: str, i: int) -> bool | None:
     return (gl + gv > 2) == (i == 0)
 
 
+def beneficio_handicap(diferencia: int, linea: float, cuota: float) -> float:
+    """Beneficio por euro de una apuesta de hándicap asiático.
+
+    `diferencia` son los goles a favor menos en contra del equipo apostado y `linea`
+    su hándicap. Las líneas de cuarto (-0.25, +0.75...) son media apuesta a cada
+    línea vecina: por eso se puede ganar o perder solo la mitad.
+    """
+    partes = [linea - 0.25, linea + 0.25] if abs(linea * 4) % 2 == 1 else [linea]
+    total = 0.0
+    for l in partes:
+        margen = diferencia + l
+        total += cuota - 1 if margen > 0 else 0.0 if margen == 0 else -1.0
+    return total / len(partes)
+
+
+def _justo_dos_lados(fila: dict, prefijos: list[str], local: str, visitante: str) -> list[float] | None:
+    for ref in prefijos:
+        a, b = _cuota(fila, ref + local), _cuota(fila, ref + visitante)
+        if a and b and 1 / a + 1 / b < 1.06:
+            total = 1 / a + 1 / b
+            return [1 / a / total, 1 / b / total]
+    return None
+
+
+def _linea(texto) -> float | None:
+    try:
+        return float(str(texto).replace(",", "."))
+    except ValueError:
+        return None
+
+
+def oportunidad_handicap(fila: dict, casas: list[str], umbral: float, cuota_min: float,
+                         cuota_max: float) -> Oportunidad | None:
+    """Hándicap asiático: el mercado con más dinero del fútbol, cuotas alrededor de 2."""
+    linea = _linea(fila.get("AHh"))
+    if linea is None:
+        return None
+    probs = _justo_dos_lados(fila, ["PAH", "BFEAH"], "H", "A")
+    if not probs:
+        return None
+    mejor = None
+    for i, lado in enumerate("HA"):
+        for casa in casas:
+            cuota = _cuota(fila, f"{casa}AH{lado}")
+            if not cuota or not cuota_min <= cuota <= cuota_max:
+                continue
+            l = linea if i == 0 else -linea
+            equipo = "local" if i == 0 else "visitante"
+            o = Oportunidad(_fecha(fila["Date"]), fila.get("Div", ""), fila["HomeTeam"], fila["AwayTeam"],
+                            f"Hándicap {equipo} {l:+g}", casa, cuota, probs[i], "PS" if fila.get("PAHH") else "BFE",
+                            familia="Hándicap asiático")
+            if o.valor >= umbral and (mejor is None or o.valor > mejor[1].valor):
+                mejor = (i, o)
+    if not mejor:
+        return None
+    i, o = mejor
+    if fila.get("FTHG") and fila.get("FTAG"):
+        diferencia = int(fila["FTHG"]) - int(fila["FTAG"])
+        o.beneficio = beneficio_handicap(diferencia if i == 0 else -diferencia,
+                                         linea if i == 0 else -linea, o.cuota)
+        o.resultado = o.beneficio > 0
+    if _linea(fila.get("AHCh")) == linea:
+        cierre = _justo_dos_lados(fila, ["PCAH", "BFECAH"], "H", "A")
+        if cierre:
+            o.clv = o.cuota * cierre[i] - 1
+    return o
+
+
 def oportunidades(fila: dict, casas: list[str], umbral: float = 0.02, cuota_min: float = 1.50,
-                  cuota_max: float = 5.0) -> list[Oportunidad]:
+                  cuota_max: float = 5.0, handicap: bool = True) -> list[Oportunidad]:
     """Selecciones en las que alguna casa paga al menos `umbral` por encima de lo justo.
 
     Como mucho una por mercado y partido: la de más valor.
@@ -136,15 +207,21 @@ def oportunidades(fila: dict, casas: list[str], umbral: float = 0.02, cuota_min:
                 if not cuota or not cuota_min <= cuota <= cuota_max:
                     continue
                 o = Oportunidad(_fecha(fila["Date"]), fila.get("Div", ""), fila["HomeTeam"], fila["AwayTeam"],
-                                nombre, casa, cuota, probs[i], ref)
+                                nombre, casa, cuota, probs[i], ref, familia=mercado)
                 if o.valor >= umbral and (mejor is None or o.valor > mejor[1].valor):
                     mejor = (i, o)
         if mejor:
             i, o = mejor
             o.resultado = _acierto(fila, mercado, i)
+            if o.resultado is not None:
+                o.beneficio = o.cuota - 1 if o.resultado else -1.0
             cierre = precio_justo(fila, mercado, cierre=True)
             if cierre:
                 o.clv = o.cuota * cierre[0][i] - 1
+            resultado.append(o)
+    if handicap:
+        o = oportunidad_handicap(fila, casas, umbral, cuota_min, cuota_max)
+        if o:
             resultado.append(o)
     return resultado
 
@@ -177,8 +254,8 @@ class ResumenValor:
 
     def anotar(self, o: Oportunidad) -> None:
         self.n += 1
-        self.aciertos += o.resultado
-        self.beneficio += o.cuota - 1 if o.resultado else -1
+        self.aciertos += o.beneficio > 0
+        self.beneficio += o.beneficio
         self.suma_cuotas += o.cuota
         if o.clv is not None:
             self.suma_clv += o.clv
@@ -208,9 +285,8 @@ def backtest_valor(filas: list[dict], casas: list[str], umbral: float = 0.02, cu
         temporada = fila["_archivo"].rsplit("_", 1)[-1][:4]
         temporada = f"20{temporada[:2]}/{temporada[2:]}" if temporada.isdigit() else temporada
         for o in oportunidades(fila, casas, umbral, cuota_min, cuota_max):
-            if o.resultado is None:
+            if o.beneficio is None:
                 continue
-            familia = "1X2" if o.mercado in ("1", "X", "2") else "Goles 2.5"
-            informe.por_temporada[(familia, temporada)].anotar(o)
-            informe.total[familia].anotar(o)
+            informe.por_temporada[(o.familia, temporada)].anotar(o)
+            informe.total[o.familia].anotar(o)
     return informe

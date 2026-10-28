@@ -20,7 +20,7 @@ from datetime import date, timedelta
 from predictor.backtest import backtest
 from predictor.cuotas import kelly, normalizar_mercado, seleccionar
 from predictor.datos import cara_a_cara, cargar_csv, cargar_varios, guardar_csv
-from predictor.descargar import GRANDES, LIGAS, descargar
+from predictor.descargar import GRANDES, LIGAS, TODAS, descargar
 from predictor.ejemplo import generar_liga
 from predictor.mercados import Ajustes, Predictor, familia
 from predictor.modelo import buscar_equipo
@@ -141,7 +141,7 @@ def leer_cuotas_manuales(ruta: str, equipos: list[str]) -> dict[tuple[str, str],
 # ------------------------------------------------------------------ órdenes
 def orden_descargar(args) -> None:
     print("Descargando de football-data.co.uk...")
-    descargar(args.carpeta, args.ligas, args.temporadas)
+    descargar(args.carpeta, TODAS if "todas" in args.ligas else args.ligas, args.temporadas)
     print(f"Listo. Datos en {os.path.relpath(args.carpeta)}")
 
 
@@ -249,7 +249,7 @@ def orden_jornada(args) -> None:
                 mirar.append((p, s))
 
     print("\n" + "=" * 66)
-    print("1) VALOR DE MERCADO: una casa paga más que el precio justo (1X2 y goles 2,5)")
+    print("1) VALOR DE MERCADO: una casa paga más que el precio justo (1X2, goles 2,5, hándicap asiático)")
     print("=" * 66)
     filas = [f for f in leer_filas([args.proximos]) if not f.get("FTHG")]
     mostrar_valor_mercado(filas, predictor, args, hoy)
@@ -305,13 +305,13 @@ def orden_valor(args) -> None:
               f" paga ≥ {pct(args.umbral_mercado)} más que el precio justo (Pinnacle o Betfair),")
         print(f"con cuotas entre {args.cuota_min:.2f} y {args.cuota_max:.2f}. Apuesta fija de 1 €.\n")
         inf = backtest_valor(filas, args.casas, args.umbral_mercado, args.cuota_min, args.cuota_max)
-        print(f"{'Mercado':<11}{'Temporada':<11}{'Apuestas':>9}{'Aciertos':>10}{'Cuota media':>12}"
+        print(f"{'Mercado':<19}{'Temporada':<11}{'Apuestas':>9}{'Aciertos':>10}{'Cuota media':>12}"
               f"{'Beneficio':>11}{'Yield':>8}{'CLV':>8}")
         for (familia, temporada), r in sorted(inf.por_temporada.items()):
-            print(f"{familia:<11}{temporada:<11}{r.n:>9}{100 * r.aciertos / r.n:>9.0f}%{r.suma_cuotas / r.n:>12.2f}"
+            print(f"{familia:<19}{temporada:<11}{r.n:>9}{100 * r.aciertos / r.n:>9.0f}%{r.suma_cuotas / r.n:>12.2f}"
                   f"{r.beneficio:>+10.1f}€{r.yield_pct:>+7.1f}%{r.clv_pct:>+7.1f}%")
         for familia, r in sorted(inf.total.items()):
-            print(f"{familia:<11}{'TOTAL':<11}{r.n:>9}{100 * r.aciertos / r.n:>9.0f}%{r.suma_cuotas / r.n:>12.2f}"
+            print(f"{familia:<19}{'TOTAL':<11}{r.n:>9}{100 * r.aciertos / r.n:>9.0f}%{r.suma_cuotas / r.n:>12.2f}"
                   f"{r.beneficio:>+10.1f}€{r.yield_pct:>+7.1f}%{r.clv_pct:>+7.1f}%")
         print("\nCLV: cuánto mejor que el precio justo final (justo antes del partido) era la cuota cogida.")
         print("Positivo y estable = valor real a largo plazo, aunque el beneficio de una temporada dependa de la suerte.")
@@ -396,8 +396,8 @@ def main(argv=None) -> None:
     sub = parser.add_subparsers(dest="orden", required=True)
 
     p = sub.add_parser("descargar", help="Baja resultados, córners y cuotas de las grandes ligas.")
-    p.add_argument("--ligas", nargs="+", default=GRANDES, choices=list(LIGAS),
-                   help=f"Por defecto: {' '.join(GRANDES)}.")
+    p.add_argument("--ligas", nargs="+", default=GRANDES, choices=list(LIGAS) + ["todas"],
+                   help=f"Por defecto: {' '.join(GRANDES)}. 'todas' baja las {len(LIGAS)} ligas.")
     p.add_argument("--temporadas", type=int, default=4, help="Cuántas temporadas (4).")
     p.add_argument("--carpeta", default=DESCARGAS)
     p.set_defaults(func=orden_descargar)

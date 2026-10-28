@@ -18,8 +18,21 @@ LIGAS = {
     "championship": ("E1", "Championship (Inglaterra)"),
     "eredivisie": ("N1", "Eredivisie (Países Bajos)"),
     "portugal": ("P1", "Primeira Liga (Portugal)"),
+    "league1": ("E2", "League One (Inglaterra)"),
+    "league2": ("E3", "League Two (Inglaterra)"),
+    "national": ("EC", "National League (Inglaterra)"),
+    "escocia": ("SC0", "Premiership (Escocia)"),
+    "escocia2": ("SC1", "Championship (Escocia)"),
+    "bundesliga2": ("D2", "2. Bundesliga (Alemania)"),
+    "serieb": ("I2", "Serie B (Italia)"),
+    "laliga2": ("SP2", "LaLiga Hypermotion (España)"),
+    "ligue2": ("F2", "Ligue 2 (Francia)"),
+    "belgica": ("B1", "Pro League (Bélgica)"),
+    "turquia": ("T1", "Süper Lig (Turquía)"),
+    "grecia": ("G1", "Super League (Grecia)"),
 }
 GRANDES = ["premier", "laliga", "seriea", "bundesliga", "ligue1"]
+TODAS = list(LIGAS)
 
 URL_TEMPORADA = "https://www.football-data.co.uk/mmz4281/{temporada}/{codigo}.csv"
 URL_PROXIMOS = "https://www.football-data.co.uk/fixtures.csv"

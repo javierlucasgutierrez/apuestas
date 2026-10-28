@@ -2,7 +2,7 @@
 
 Herramienta para buscar **apuestas con valor a largo plazo** en las 5 grandes ligas. Combina dos cosas:
 
-1. **Comparar casas de apuestas** (1X2 y más/menos 2,5 goles): avisa cuando una casa paga más de lo que vale el resultado.
+1. **Comparar casas de apuestas** (1X2, más/menos 2,5 goles y **hándicap asiático**): avisa cuando una casa paga más de lo que vale el resultado.
 2. **Estadística propia** (sobre todo córners): calcula la probabilidad de cada línea y te dice la **cuota mínima** que tienes que encontrar en Oddspedia.
 
 Es independiente del resto del repositorio (la app K9 Club). Solo necesita **Python 3.10 o superior**.
@@ -82,6 +82,25 @@ Cómo leerlo:
 - **Ojo, se acierta poco (30 %)**: son sobre todo empates y no favoritos a cuota alta. Habrá **rachas de 10 o más fallos seguidos** y hay que aguantarlas. Si solo usas cuotas entre 1,50 y 2,50 hay muy pocas oportunidades (unas 60 en 3 años).
 - **"Mejor cuota del mercado"** es la más alta entre decenas de casas, y algunas no operan en España. Solo con Bet365 y bwin salen unas 75 apuestas en 3 años (1X2: +6,5 %, CLV +0,9 %). **Cuantas más cuentas tengas en casas españolas, más oportunidades.** Oddspedia te enseña todas a la vez.
 
+### 1 bis. Más volumen: hándicap asiático y más ligas
+
+El **hándicap asiático** es el mercado de fútbol que más dinero mueve. Las cuotas rondan el 2,00 y se gana más o menos la mitad de las veces: justo tu perfil de "cuota por encima de 1,50". Como mueve tanto dinero, es muy eficiente y salen pocas oportunidades. Por eso hay que mirar **más ligas**.
+
+Mismas reglas, ahora en **20 ligas** (las 5 grandes, sus segundas divisiones, League One y Two, National League, Escocia, Portugal, Países Bajos, Bélgica, Turquía y Grecia):
+
+| Mercado | Apuestas (3 temporadas) | Aciertos | Cuota media | Beneficio | Rentabilidad | CLV |
+|---|---|---|---|---|---|---|
+| **Hándicap asiático** | **591** | **51 %** | **2,03** | **+67,7 €** | **+11,5 %** | **+2,9 %** |
+| 1X2 | 2.951 | 31 % | 3,60 | +167,2 € | +5,7 % | +2,9 % |
+| Goles 2,5 | 615 | 43 % | 2,46 | −2,0 € | −0,3 % | +3,5 % |
+
+- **Hándicap asiático: positivo en todas las temporadas** (+14 %, +7 %, +11 %, +9 %), con medio partido acertado y cuota ~2. Es el mercado más estable de todos.
+- **Más ligas = unas 4 veces más apuestas**, con un CLV algo menor que en las 5 grandes (+2–3 % frente a +4 %). El CLV es positivo **en las 15 ligas añadidas**.
+- **Solo con Bet365** (20 ligas): 1X2 538 apuestas (+3,9 %) y hándicap asiático 90 (+8,8 %).
+- En goles 2,5 el CLV es positivo, pero el beneficio sigue cerca de cero: por ahora, prudencia.
+
+Para bajarlas todas: `python app.py descargar --ligas todas`.
+
 ### 2. Nuestro modelo solo, contra las casas (1X2 y goles): no da valor
 
 Si se apuesta solo porque el modelo ve valor frente a Bet365, se pierde un 5–7 % y el CLV es negativo (−1,6 % / −2,6 %). En 1X2 y goles **la casa sabe más que las estadísticas**. Por eso la herramienta ya **no** recomienda 1X2 ni goles basándose solo en el modelo.
@@ -117,7 +136,8 @@ Abre una terminal dentro de la carpeta `apuestas`.
 ### 1. Descargar los datos (antes de cada jornada)
 
 ```
-python app.py descargar
+python app.py descargar               # las 5 grandes
+python app.py descargar --ligas todas # las 20 ligas (más oportunidades)
 ```
 
 ### 2. Ver la jornada
@@ -128,7 +148,7 @@ python app.py jornada
 
 Te enseña dos listas:
 
-1. **VALOR DE MERCADO**: "Partido X: empate en Bet365 @ 3,90 (justa 3,60, valor +8 %) → 1,20 € · modelo de acuerdo ✔".
+1. **VALOR DE MERCADO** (1X2, goles 2,5 y hándicap asiático): "Partido X: empate en Bet365 @ 3,90 (justa 3,60, valor +8 %) → 1,20 € · modelo de acuerdo ✔" o "Hándicap local −0.25 en Bet365 @ 2,10".
 2. **CÓRNERS PARA MIRAR EN ODDSPEDIA**: "Milan - Bologna: córners −10,5 · 70 % · cuota mínima 1,50".
 
 Opciones: `--dias 7`, `--liga laliga`, `--bank 300`, y `--todos` para ver también goles y 1X2 del modelo.

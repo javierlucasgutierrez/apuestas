@@ -14,7 +14,8 @@ from predictor.descargar import codigo_temporada, temporada_actual
 from predictor.ejemplo import generar_liga
 from predictor.mercados import Predictor, acierta
 from predictor.modelo import binomial_negativa
-from predictor.valor import backtest_valor, oportunidades, precio_justo, probabilidad_consenso
+from predictor.valor import (backtest_valor, beneficio_handicap, oportunidades, precio_justo,
+                             probabilidad_consenso)
 
 
 def csv_temporal(contenido: str) -> list[Partido]:
@@ -198,6 +199,26 @@ class TestValorMercado(unittest.TestCase):
         inf = backtest_valor([self.FILA], ["B365"])
         self.assertEqual(inf.total["1X2"].n, 1)
         self.assertAlmostEqual(inf.total["1X2"].beneficio, 2.90)
+
+    def test_handicap_asiatico(self):
+        # Local -0.5: gana si gana el partido.
+        self.assertAlmostEqual(beneficio_handicap(1, -0.5, 2.0), 1.0)
+        self.assertAlmostEqual(beneficio_handicap(0, -0.5, 2.0), -1.0)
+        # Línea 0: empate = se devuelve el dinero.
+        self.assertAlmostEqual(beneficio_handicap(0, 0, 2.0), 0.0)
+        # -0.25 con empate: medio perdido; +0.25 con empate: medio ganado.
+        self.assertAlmostEqual(beneficio_handicap(0, -0.25, 2.0), -0.5)
+        self.assertAlmostEqual(beneficio_handicap(0, 0.25, 2.0), 0.5)
+        # -1.0 ganando por 1: se devuelve; -0.75 ganando por 1: medio ganado.
+        self.assertAlmostEqual(beneficio_handicap(1, -1.0, 1.9), 0.0)
+        self.assertAlmostEqual(beneficio_handicap(1, -0.75, 1.9), 0.45)
+
+    def test_oportunidad_handicap(self):
+        fila = dict(self.FILA, AHh="-0.25", PAHH="1.95", PAHA="1.95", B365AHH="2.10", B365AHA="1.80")
+        ops = [o for o in oportunidades(fila, ["B365"], umbral=0.02) if o.familia == "Hándicap asiático"]
+        self.assertEqual(len(ops), 1)
+        self.assertEqual((ops[0].mercado, ops[0].cuota), ("Hándicap local -0.25", 2.10))
+        self.assertAlmostEqual(ops[0].beneficio, -0.5)  # 0-0: medio perdido
 
     def test_consenso(self):
         # Dos casas con 1.90 / 1.90: justo 50 %.
