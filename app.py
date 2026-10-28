@@ -699,6 +699,7 @@ def main(argv=None) -> None:
     p.add_argument("--metodo", choices=["kelly", "plano"])
     p.add_argument("--kelly", type=float)
     p.add_argument("--tope", type=float)
+    p.add_argument("--plano", type=float, help="Con método plano, parte del bank por apuesta (0.01 = 1 %%).")
     p.add_argument("--dias", type=int)
     p.set_defaults(func=orden_configurar)
 

@@ -62,6 +62,21 @@ TOTAL                  412      37%   3.21    1236    +98.40    +8.0%   +2.7%
 
 Lo saca **por mes y por mercado**, y lo exporta completo a `datos/historial.csv`, con la fecha y hora a la que se dio cada pick.
 
+### ¿Qué stake usar? (comprobado con los datos)
+
+| Perfil | Mejor método | Año normal | Probabilidad de acabar el año perdiendo | Bajón típico |
+|---|---|---|---|---|
+| **Cuotas cortas** | **Fijo 1 % del bank** (stake 3/10) | +19 % | 9 % | 8 % |
+| Cuotas cortas | Kelly 1/4 | +13 % | 16 % | 9 % |
+| **Equilibrado** | **Kelly 1/4** | +60 % | 3 % | 16 % |
+| Equilibrado | Fijo 1 % | +89 % | 10 % | 31 % |
+
+Con cuotas cortas funciona mejor **apostar siempre lo mismo** (1 % del bank). Con el perfil equilibrado, que tiene cuotas muy distintas, es mejor **Kelly 1/4**: apuesta más cuando hay más valor y menos en las cuotas altas. Apostar más fuerte (2 %, Kelly 1/2 o completo) gana más en un año normal, pero los bajones pasan del 30–50 %.
+
+```
+python app.py configurar --perfil cuotas_cortas --metodo plano --plano 0.01
+```
+
 ### Los stakes 1–10
 
 El stake sale del criterio de Kelly. **Stake 10 = el máximo que permite el sistema (3 % del bank)**; stake 5 = 1,5 %; stake 1 = 0,3 % o menos. Con el sistema, la mayoría de los picks salen con stake 1–4: son apuestas de valor a cuotas medias-altas, y apostar más fuerte hundiría el bank en las rachas malas.
