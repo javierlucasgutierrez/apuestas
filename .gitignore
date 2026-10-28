@@ -3,3 +3,6 @@ __pycache__/
 /datos/descargas/
 /datos/mis_*
 /datos/ejemplo/
+/datos/*.db
+/datos/publicar/
+/preferencias.json

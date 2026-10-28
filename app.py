@@ -12,6 +12,7 @@ Ejecuta `python app.py <orden> -h` para ver todas las opciones.
 
 import argparse
 import csv
+import json
 import os
 import sys
 from dataclasses import replace
@@ -26,11 +27,15 @@ from predictor.mercados import Ajustes, Predictor, familia
 from predictor.modelo import buscar_equipo
 from predictor.optimizar import optimizar
 from predictor.sistema import PERFILES, apuestas_del_sistema, comparar_perfiles, montecarlo, simular_bank, stake
+from predictor.registro import Registro, descripcion, resumir, stake_10
 from predictor.valor import CASAS, backtest_valor, leer_filas, oportunidades, probabilidad_consenso
 
 CARPETA = os.path.dirname(os.path.abspath(__file__))
 DESCARGAS = os.path.join(CARPETA, "datos", "descargas")
 AJUSTES = os.path.join(CARPETA, "ajustes.json")
+PREFERENCIAS = os.path.join(CARPETA, "preferencias.json")
+BASE_DATOS = os.path.join(CARPETA, "datos", "apuestas.db")
+PUBLICAR = os.path.join(CARPETA, "datos", "publicar")
 NOMBRE_LIGA = {codigo: nombre for codigo, nombre in LIGAS.values()}
 
 
@@ -59,6 +64,13 @@ def opciones_seleccion(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--cuota-max", type=float, default=5.0, help="Cuota máxima en valor de mercado (5).")
     parser.add_argument("--casas", nargs="+", default=list(CASAS), metavar="CASA",
                         help=f"Casas a comparar: {' '.join(CASAS)} (por defecto todas).")
+
+
+def leer_preferencias() -> dict:
+    if os.path.exists(PREFERENCIAS):
+        with open(PREFERENCIAS, encoding="utf-8") as f:
+            return json.load(f)
+    return {}
 
 
 def leer_ajustes(args) -> Ajustes:
@@ -378,18 +390,148 @@ def orden_sistema(args) -> None:
         print("Ninguna apuesta ahora mismo. Vuelve tras 'python app.py descargar'.")
         return
     total = 0.0
+    registro = Registro(BASE_DATOS) if args.guardar else None
+    nuevos = 0
     for o in elegidas:
-        importe = args.bank * stake(o, args.metodo, **kw)
+        pct_bank = stake(o, args.metodo, **kw)
+        importe = args.bank * pct_bank
         total += importe
         liga = NOMBRE_LIGA.get(o.liga, o.liga)
         print(f"{o.fecha:%a %d/%m}  {o.local} - {o.visitante} [{liga}]")
         print(f"      {o.mercado} en {CASAS.get(o.casa, o.casa)} @ {o.cuota:.2f}  (justa {o.cuota_justa:.2f}, "
-              f"valor {100 * o.valor:+.1f} %)  →  {importe:.2f} €")
+              f"valor {100 * o.valor:+.1f} %)  →  {importe:.2f} € · stake {stake_10(pct_bank, args.tope)}/10")
+        if registro and registro.guardar(o, pct_bank, args.perfil, args.tope):
+            nuevos += 1
     print("-" * 66)
     print(f"{len(elegidas)} apuestas · total {total:.2f} € ({100 * total / args.bank:.1f} % del bank)")
+    if registro:
+        print(f"Guardados en el registro: {nuevos} nuevos ({len(elegidas) - nuevos} ya estaban).")
+        registro.cerrar()
     print("Comprueba cada cuota en Oddspedia: si ha bajado de la justa × 1,02, ya no tiene valor.")
     print("'Mejor cuota del mercado' puede ser de una casa que no opera en España: busca esa cuota")
     print("(o más) entre tus casas. Sin varias cuentas abiertas, el sistema pierde casi toda su ventaja.")
+
+
+def mostrar_pick(p) -> str:
+    return (f"{p.fecha_partido:%d/%m} {p.local} - {p.visitante} · {p.mercado} @ {p.cuota:.2f} "
+            f"({CASAS.get(p.casa, p.casa)}) · stake {p.stake}/10")
+
+
+def orden_configurar(args) -> None:
+    prefs = leer_preferencias()
+    cambios = {k: v for k, v in vars(args).items() if k not in ("func", "orden") and v is not None}
+    prefs.update(cambios)
+    with open(PREFERENCIAS, "w", encoding="utf-8") as f:
+        json.dump(prefs, f, indent=2, ensure_ascii=False)
+    print("Preferencias guardadas (se usan por defecto en todas las órdenes):")
+    for k, v in prefs.items():
+        print(f"  {k}: {' '.join(v) if isinstance(v, list) else v}")
+
+
+def orden_actualizar(args) -> None:
+    ligas = args.ligas or GRANDES
+    print("1) Descargando datos nuevos de football-data.co.uk...")
+    descargar(DESCARGAS, TODAS if "todas" in ligas else ligas, args.temporadas)
+    print("\n2) Liquidando picks pendientes...")
+    registro = Registro(BASE_DATOS)
+    liquidados = registro.liquidar(leer_filas([DESCARGAS]))
+    for p in liquidados:
+        signo = f"{p.unidades:+.2f} u" if p.unidades is not None else ""
+        print(f"  {p.estado.upper():<14}{mostrar_pick(p)} → {signo}")
+    pendientes = registro.pendientes()
+    print(f"  {len(liquidados)} liquidados · {len(pendientes)} siguen pendientes")
+    total, _, _ = resumir(registro.picks())
+    if total.picks:
+        print(f"\nHistorial: {total.picks} picks · {total.unidades:+.2f} unidades · yield {total.yield_pct:+.1f} %")
+    registro.cerrar()
+    if os.path.exists(AJUSTES):
+        dias = (date.today() - date.fromtimestamp(os.path.getmtime(AJUSTES))).days
+        if dias > 30:
+            print(f"\nLos ajustes del modelo tienen {dias} días: conviene ejecutar 'python app.py optimizar'.")
+
+
+def orden_anotar(args) -> None:
+    """Pick manual (por ejemplo, de córners) para que entre en el registro y se liquide solo."""
+    from predictor.valor import Oportunidad
+    mercado = normalizar_mercado(args.mercado)
+    fecha = date.fromisoformat(args.fecha)
+    familia = "Córners" if mercado.startswith("Córners") else "Manual"
+    o = Oportunidad(fecha, args.liga or "", args.local, args.visitante, mercado, args.casa, args.cuota,
+                    1 / args.cuota, "manual", familia=familia)
+    registro = Registro(BASE_DATOS)
+    pct = args.stake * args.tope / 10
+    if registro.guardar(o, pct, "manual", args.tope):
+        print(f"Anotado: {args.local} - {args.visitante} · {mercado} @ {args.cuota:.2f} · stake {args.stake}/10")
+    else:
+        print("Ese pick ya estaba en el registro.")
+    registro.cerrar()
+
+
+def orden_picks(args) -> None:
+    registro = Registro(BASE_DATOS)
+    pendientes = registro.pendientes()
+    if not pendientes:
+        print("No hay picks pendientes.")
+    for p in pendientes:
+        print(("   " if p.publicado else " * ") + mostrar_pick(p))
+    if pendientes:
+        print("(* = sin publicar)")
+    if args.publicar:
+        nuevos = [p for p in pendientes if not p.publicado]
+        if not nuevos:
+            print("Nada nuevo que publicar.")
+        else:
+            os.makedirs(PUBLICAR, exist_ok=True)
+            ruta = os.path.join(PUBLICAR, f"{date.today():%Y-%m-%d}.txt")
+            with open(ruta, "a", encoding="utf-8") as f:
+                for p in nuevos:
+                    liga = NOMBRE_LIGA.get(p.liga, p.liga)
+                    f.write(f"⚽ {p.local} - {p.visitante} · {liga} · {p.fecha_partido:%d/%m}\n"
+                            f"➡️ {descripcion(p)}\n💰 Cuota {p.cuota:.2f} ({CASAS.get(p.casa, p.casa)})\n"
+                            f"📊 Stake {p.stake}/10\n")
+                    if p.cuota_justa and p.cuota_justa * 1.02 < p.cuota:
+                        f.write(f"🔻 No apostar por debajo de {p.cuota_justa * 1.02:.2f}\n")
+                    f.write("\n")
+            registro.marcar_publicados([p.id for p in nuevos])
+            print(f"\nTexto para publicar ({len(nuevos)} picks): {os.path.relpath(ruta)}")
+    registro.cerrar()
+
+
+def orden_informe(args) -> None:
+    registro = Registro(BASE_DATOS)
+    picks = registro.picks()
+    registro.cerrar()
+    total, por_mes, por_familia = resumir(picks)
+    if args.exportar:
+        with open(args.exportar, "w", encoding="utf-8", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["id", "dado", "fecha", "liga", "local", "visitante", "mercado", "casa", "cuota",
+                        "stake", "estado", "unidades", "clv"])
+            for p in picks:
+                w.writerow([p.id, p.creado, p.fecha_partido, p.liga, p.local, p.visitante, p.mercado, p.casa,
+                            p.cuota, p.stake, p.estado, "" if p.unidades is None else round(p.unidades, 3),
+                            "" if p.clv is None else round(p.clv, 4)])
+        print(f"Historial completo exportado a {args.exportar}")
+    if not total.picks:
+        print("Todavía no hay picks liquidados.")
+        return
+
+    def fila(nombre, r):
+        clv = f"{r.clv_pct:+.1f}%" if r.clv_pct is not None else "-"
+        return (f"{nombre:<20}{r.picks:>6}{r.acierto_pct:>8.0f}%{r.cuota_media:>7.2f}{r.stake_total:>8.0f}"
+                f"{r.unidades:>+10.2f}{r.yield_pct:>+8.1f}%{clv:>8}")
+
+    cabecera = f"{'':<20}{'Picks':>6}{'Acierto':>9}{'Cuota':>7}{'Stake':>8}{'Unidades':>10}{'Yield':>9}{'CLV':>8}"
+    print("HISTORIAL DE PICKS (todos los liquidados, sin quitar ninguno)\n" + cabecera)
+    print(fila("TOTAL", total))
+    print("\nPor mes\n" + cabecera)
+    for mes, r in sorted(por_mes.items()):
+        print(fila(mes, r))
+    print("\nPor mercado\n" + cabecera)
+    for familia, r in sorted(por_familia.items()):
+        print(fila(familia, r))
+    if total.picks < 300:
+        print(f"\n⚠  Con {total.picks} picks el resultado aún puede ser suerte. El CLV es mejor indicador.")
 
 
 def orden_backtest(args) -> None:
@@ -524,7 +666,44 @@ def main(argv=None) -> None:
     p.add_argument("--desde", help="Fecha inicial AAAA-MM-DD (por defecto hoy).")
     p.add_argument("--liga", nargs="+", help="Solo estas ligas.")
     p.add_argument("--backtest", action="store_true", help="Probar los perfiles con el histórico.")
+    p.add_argument("--guardar", action="store_true", help="Guardar los picks en el registro.")
     p.set_defaults(func=orden_sistema)
+
+    p = sub.add_parser("configurar", help="Guarda tus preferencias (bank, casas, ligas, perfil...).")
+    p.add_argument("--bank", type=float)
+    p.add_argument("--casas", nargs="+", metavar="CASA", help=f"Tus casas: {' '.join(CASAS)}.")
+    p.add_argument("--ligas", nargs="+", choices=list(LIGAS) + ["todas"])
+    p.add_argument("--perfil", choices=list(PERFILES))
+    p.add_argument("--metodo", choices=["kelly", "plano"])
+    p.add_argument("--kelly", type=float)
+    p.add_argument("--tope", type=float)
+    p.add_argument("--dias", type=int)
+    p.set_defaults(func=orden_configurar)
+
+    p = sub.add_parser("actualizar", help="Cada jornada: baja datos nuevos y liquida los picks jugados.")
+    p.add_argument("--ligas", nargs="+", choices=list(LIGAS) + ["todas"])
+    p.add_argument("--temporadas", type=int, default=4)
+    p.set_defaults(func=orden_actualizar)
+
+    p = sub.add_parser("anotar", help="Añade un pick a mano (p. ej. de córners) al registro.")
+    p.add_argument("--fecha", required=True, help="Fecha del partido AAAA-MM-DD.")
+    p.add_argument("--local", required=True, help="Como aparece en los datos (mira 'equipos').")
+    p.add_argument("--visitante", required=True)
+    p.add_argument("--mercado", required=True, help="corners+9.5, goles-2.5, 1, X, 2...")
+    p.add_argument("--cuota", type=float, required=True)
+    p.add_argument("--casa", default="manual")
+    p.add_argument("--stake", type=int, default=5, choices=range(1, 11), metavar="1-10")
+    p.add_argument("--liga", help="Código de liga (SP1, E0...).")
+    p.add_argument("--tope", type=float, default=0.03)
+    p.set_defaults(func=orden_anotar)
+
+    p = sub.add_parser("picks", help="Picks pendientes; con --publicar crea el texto para publicarlos.")
+    p.add_argument("--publicar", action="store_true")
+    p.set_defaults(func=orden_picks)
+
+    p = sub.add_parser("informe", help="Historial de tus picks: yield, unidades, CLV, por mes y mercado.")
+    p.add_argument("--exportar", metavar="ARCHIVO.csv", help="Exportar todos los picks a CSV.")
+    p.set_defaults(func=orden_informe)
 
     p = sub.add_parser("backtest", help="¿Se cumplen las probabilidades? ¿Habría ganado dinero?")
     opciones_datos(p)
@@ -539,6 +718,14 @@ def main(argv=None) -> None:
 
     p = sub.add_parser("ejemplo", help="Crea una liga ficticia para probar sin conexión.")
     p.set_defaults(func=orden_ejemplo)
+
+    # Las preferencias guardadas con 'configurar' pasan a ser los valores por defecto.
+    prefs = leer_preferencias()
+    for subparser in sub.choices.values():
+        if subparser.prog.endswith(" configurar"):
+            continue
+        destinos = {a.dest for a in subparser._actions}
+        subparser.set_defaults(**{k: v for k, v in prefs.items() if k in destinos})
 
     args = parser.parse_args(argv)
     try:

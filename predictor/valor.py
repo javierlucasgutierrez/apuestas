@@ -290,3 +290,53 @@ def backtest_valor(filas: list[dict], casas: list[str], umbral: float = 0.02, cu
             informe.por_temporada[(o.familia, temporada)].anotar(o)
             informe.total[o.familia].anotar(o)
     return informe
+
+
+def liquidar(fila: dict, mercado: str, cuota: float) -> tuple[float | None, float | None]:
+    """(beneficio por euro, CLV) de una apuesta ya jugada. None si aún no hay resultado.
+
+    Vale para 1X2, goles ±2.5, hándicap asiático ("Hándicap local -0.25") y córners
+    ("Córners +9.5", sin CLV porque no hay cuotas de cierre de córners).
+    """
+    try:
+        gl, gv = int(fila["FTHG"]), int(fila["FTAG"])
+    except (KeyError, ValueError, TypeError):
+        return None, None
+    clv = None
+    if mercado in ("1", "X", "2"):
+        i = "1X2".index(mercado)
+        ok = i == (0 if gl > gv else 1 if gl == gv else 2)
+        beneficio = cuota - 1 if ok else -1.0
+        cierre = precio_justo(fila, "1X2", cierre=True)
+        if cierre:
+            clv = cuota * cierre[0][i] - 1
+    elif mercado.startswith("Goles "):
+        linea = float(mercado.split()[1][1:])
+        mas = "+" in mercado
+        ok = (gl + gv > linea) if mas else (gl + gv < linea)
+        beneficio = cuota - 1 if ok else -1.0
+        if linea == 2.5:
+            cierre = precio_justo(fila, "Goles 2.5", cierre=True)
+            if cierre:
+                clv = cuota * cierre[0][0 if mas else 1] - 1
+    elif mercado.startswith("Hándicap "):
+        _, equipo, texto = mercado.split()
+        linea = float(texto)
+        local = equipo == "local"
+        beneficio = beneficio_handicap(gl - gv if local else gv - gl, linea, cuota)
+        linea_local = linea if local else -linea
+        if _linea(fila.get("AHCh")) == linea_local:
+            cierre = _justo_dos_lados(fila, ["PCAH", "BFECAH"], "H", "A")
+            if cierre:
+                clv = cuota * cierre[0 if local else 1] - 1
+    elif mercado.startswith("Córners "):
+        try:
+            total = int(fila["HC"]) + int(fila["AC"])
+        except (KeyError, ValueError, TypeError):
+            return None, None
+        linea = float(mercado.split()[1][1:])
+        ok = total > linea if "+" in mercado else total < linea
+        beneficio = cuota - 1 if ok else -1.0
+    else:
+        raise ValueError(f"No sé liquidar el mercado {mercado!r}")
+    return beneficio, clv

@@ -9,6 +9,72 @@ Es independiente del resto del repositorio (la app K9 Club). Solo necesita **Pyt
 
 ---
 
+## Uso diario en tu ordenador
+
+### Instalarlo (una sola vez)
+
+1. Instala **Python** desde https://www.python.org/downloads. En Windows, marca la casilla **"Add Python to PATH"** al instalar.
+2. Descarga el proyecto (en GitHub: **Code → Download ZIP**) y descomprímelo donde quieras. Solo necesitas la carpeta `apuestas`.
+3. Abre una terminal en la carpeta `apuestas` (en Windows, escribe `cmd` en la barra de direcciones de la carpeta y pulsa Enter) y guarda tus preferencias:
+
+   ```
+   python app.py configurar --bank 1000 --casas B365 BW WH Max --ligas todas --perfil equilibrado
+   ```
+
+   Se guardan en `preferencias.json` y se usan solas a partir de ahora. Puedes cambiarlas cuando quieras repitiendo la orden.
+
+### Cada jornada: doble clic en `jornada.bat` (en Mac, `jornada.command`)
+
+Hace todo seguido:
+
+1. **Actualiza los datos**: baja los resultados y cuotas nuevos. **Los datos se van sumando**: la temporada en curso se actualiza y las anteriores se quedan guardadas, así que con los años cada vez hay más historia.
+2. **Liquida tus picks** ya jugados (ganada, perdida, nula, medio ganada/perdida) y calcula su CLV con la cuota de cierre.
+3. **Da los picks nuevos** del sistema con su **stake del 1 al 10** y los **guarda en el registro** (`datos/apuestas.db`).
+4. **Prepara el texto para publicar** en `datos/publicar/AAAA-MM-DD.txt`:
+
+   ```
+   ⚽ Newcastle - Chelsea · Premier League (Inglaterra) · 20/12
+   ➡️ Empate
+   💰 Cuota 3.65 (BetMGM)
+   📊 Stake 1/10
+   🔻 No apostar por debajo de 3.60
+   ```
+
+5. Te enseña los **córners para mirar en Oddspedia**.
+
+Si das un pick a mano (por ejemplo, de córners), anótalo para que entre en el historial y se liquide solo:
+
+```
+python app.py anotar --fecha 2026-11-01 --local Betis --visitante Sevilla --mercado corners+9.5 --cuota 1.85 --casa B365 --stake 4 --liga SP1
+```
+
+### Una vez al mes
+
+`python app.py optimizar`: recalcula el modelo con todos los datos acumulados. La orden `actualizar` te avisa cuando toca.
+
+### Tu historial: doble clic en `informe.bat`
+
+```
+HISTORIAL DE PICKS (todos los liquidados, sin quitar ninguno)
+                     Picks  Acierto  Cuota   Stake  Unidades    Yield     CLV
+TOTAL                  412      37%   3.21    1236    +98.40    +8.0%   +2.7%
+```
+
+Lo saca **por mes y por mercado**, y lo exporta completo a `datos/historial.csv`, con la fecha y hora a la que se dio cada pick.
+
+### Los stakes 1–10
+
+El stake sale del criterio de Kelly. **Stake 10 = el máximo que permite el sistema (3 % del bank)**; stake 5 = 1,5 %; stake 1 = 0,3 % o menos. Con el sistema, la mayoría de los picks salen con stake 1–4: son apuestas de valor a cuotas medias-altas, y apostar más fuerte hundiría el bank en las rachas malas.
+
+### Si vendes los picks
+
+- **Publica el historial completo**, con las pérdidas y los nulos incluidos. El registro no deja borrar ni cambiar picks, y el CSV lleva la hora a la que se dio cada uno. Es tu mejor argumento de venta, y lo honesto con quien te paga.
+- **No prometas ganancias.** Con 30–40 % de aciertos habrá meses en negativo aunque el sistema funcione. Enseña el **CLV**: es lo que demuestra el valor a largo plazo.
+- **Tus clientes no consiguen tu cuota.** Cuando muchos apuestan lo mismo, la cuota baja. Por eso el texto para publicar ya incluye la **cuota mínima** ("No apostar por debajo de..."): por debajo, el pick ya no tiene valor.
+- **Revisa la normativa** antes de cobrar: la publicidad y la promoción del juego en España están reguladas (Ley 13/2011 y Real Decreto 958/2020). Si promocionas casas o usas enlaces de afiliado, tiene sus propias reglas. Revisa también las condiciones de la plataforma donde vendes y consulta a un asesor si tienes dudas.
+
+---
+
 ## Explicado fácil
 
 ### ¿Qué es "valor"?
@@ -233,6 +299,8 @@ python -m unittest discover -s tests
 
 - `app.py`: la aplicación.
 - `ajustes.json`: ajustes y corrección calculados por `optimizar`.
+- `jornada.bat` / `jornada.command`: lo de cada jornada, con doble clic. `informe.bat`: tu historial.
+- `predictor/registro.py`: registro de picks (base de datos local), liquidación automática y estadísticas.
 - `predictor/sistema.py`: perfiles del sistema, importe de cada apuesta y simulación del bank.
 - `predictor/valor.py`: comparador de casas, precio justo y CLV.
 - `predictor/modelo.py`: fuerzas de ataque y defensa, Poisson / Dixon-Coles y binomial negativa.

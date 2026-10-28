@@ -248,5 +248,33 @@ class TestSistema(unittest.TestCase):
         self.assertEqual(sim.apuestas, 3)
 
 
+class TestRegistro(unittest.TestCase):
+    def test_guardar_liquidar_y_resumir(self):
+        from predictor.registro import Registro, descripcion, estado_de, resumir, stake_10
+        from predictor.valor import Oportunidad, liquidar
+        with tempfile.TemporaryDirectory() as carpeta:
+            r = Registro(os.path.join(carpeta, "prueba.db"))
+            o = Oportunidad(date(2025, 9, 1), "SP1", "Betis", "Elche", "Hándicap local -0.25", "B365", 2.10,
+                            0.5, "PS", familia="Hándicap asiático")
+            self.assertTrue(r.guardar(o, 0.015, "equilibrado"))
+            self.assertFalse(r.guardar(o, 0.015, "equilibrado"))  # no se duplica
+            fila = {"Date": "01/09/2025", "HomeTeam": "Betis", "AwayTeam": "Elche", "FTHG": "1", "FTAG": "1"}
+            hechos = r.liquidar([fila])
+            self.assertEqual(len(hechos), 1)
+            p = hechos[0]
+            self.assertEqual((p.estado, p.stake), ("medio perdida", 5))
+            self.assertAlmostEqual(p.unidades, -2.5)
+            total, por_mes, _ = resumir(r.picks())
+            self.assertEqual((total.picks, list(por_mes)), (1, ["2025-09"]))
+            self.assertEqual(descripcion(p), "Betis -0.25 (hándicap asiático)")
+            r.cerrar()
+        self.assertEqual(stake_10(0.03), 10)
+        self.assertEqual(stake_10(0.001), 1)
+        self.assertEqual(estado_de(1.1, 2.1), "ganada")
+        self.assertEqual(estado_de(0.0, 2.1), "nula")
+        self.assertAlmostEqual(liquidar({"FTHG": "2", "FTAG": "1", "HC": "7", "AC": "2"}, "Córners -9.5", 1.9)[0], 0.9)
+        self.assertEqual(liquidar({"FTHG": "2", "FTAG": "1", "HC": "7", "AC": "4"}, "Córners -9.5", 1.9)[0], -1.0)
+
+
 if __name__ == "__main__":
     unittest.main()
