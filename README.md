@@ -179,6 +179,8 @@ Se diseñó con las temporadas 2023/24 y 2024/25 y se comprobó con **2025/26 y 
 | **Equilibrado (≥ 2 %)** | **828** | **13** | **36 %** | **3,24** | **+8,7 %** | **+2,9 %** | **1.784 €** | **21 %** |
 | Volumen (hándicap ≥ 1 %) | 919 | 14 | 37 % | 3,11 | +8,5 % | +2,7 % | 1.832 € | 20 % |
 
+**Perfil "cuotas cortas" (solo cuotas de 1,60 a 2,10)**: en las temporadas de prueba, 167 apuestas (unas 3 por semana), **55 % ganadas**, cuota media 1,95, **+14,7 %** y CLV +2,7 %. La peor racha fue de **7 fallos seguidos** (frente a 19 en el equilibrado) y la peor caída del bank, del 7 %. Gana más por apuesta, pero salen 5 veces menos apuestas, así que **el beneficio total es menor**. Con 50 €/mes: 650 € → 725 € (cuotas cortas) frente a 650 € → 824 € (equilibrado). Es ideal para vender picks, porque se acierta la mitad: `python app.py sistema --perfil cuotas_cortas`.
+
 **Una temporada simulada 2.000 veces** (sorteando apuestas reales), perfil equilibrado y unas 1.090 apuestas al año: en un año normal el bank sube un **+58 %**; en un año malo (el peor 5 %), se queda **igual**; la probabilidad de acabar el año perdiendo es del **5 %**; y lo normal es pasar por una caída del **17 %** en algún momento.
 
 ⚠ **La condición más importante: tener cuenta en muchas casas.** Con solo Bet365 y bwin, el mismo sistema **queda en tablas** en la prueba (+0,7 %, unas 3 apuestas por semana). La ventaja sale de coger siempre la mejor cuota. "Mejor cuota del mercado" es la más alta entre decenas de casas, y algunas no operan en España. Cuantas más casas españolas tengas (Bet365, bwin, William Hill, Betfair, Codere, Sportium, Betway, 888, Winamax, Kirolbet, Retabet...), más te acercas a la tabla de arriba.

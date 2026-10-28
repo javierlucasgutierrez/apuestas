@@ -23,7 +23,10 @@ PERFILES = {
     "conservador": {"Hándicap asiático": (0.03, 5.0), "1X2": (0.03, 5.0)},
     "equilibrado": {"Hándicap asiático": (0.02, 5.0), "1X2": (0.02, 5.0)},
     "volumen": {"Hándicap asiático": (0.01, 5.0), "1X2": (0.02, 5.0)},
+    # Cuotas de 1,60 a 2,10: menos apuestas, pero se gana la mitad y las rachas son más cortas.
+    "cuotas_cortas": {"Hándicap asiático": (0.02, 2.10), "1X2": (0.02, 2.10)},
 }
+CUOTA_MIN_PERFIL = {"cuotas_cortas": 1.60}
 TEMPORADAS_ENTRENO = {"2324", "2425"}
 
 
@@ -34,6 +37,7 @@ def temporada(fila: dict) -> str:
 def apuestas_del_sistema(filas: list[dict], perfil: str, casas: list[str],
                          cuota_min: float = 1.50) -> list[tuple[dict, Oportunidad]]:
     reglas = PERFILES[perfil]
+    cuota_min = max(cuota_min, CUOTA_MIN_PERFIL.get(perfil, cuota_min))
     resultado = []
     for fila in filas:
         try:
