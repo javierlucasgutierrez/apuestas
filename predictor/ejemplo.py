@@ -45,6 +45,9 @@ def generar_liga(temporadas: int = 3, semilla: int = 7, inicio: date = date(2023
     rnd = random.Random(semilla)
     ataque = {t: math.exp(rnd.gauss(0, 0.22)) for t in EQUIPOS}
     defensa = {t: math.exp(rnd.gauss(0, 0.20)) for t in EQUIPOS}
+    # Los córners dependen en parte de lo ofensivo que es cada equipo.
+    c_ataque = {t: ataque[t] ** 0.5 * math.exp(rnd.gauss(0, 0.15)) for t in EQUIPOS}
+    c_defensa = {t: defensa[t] ** 0.5 * math.exp(rnd.gauss(0, 0.12)) for t in EQUIPOS}
     base, casa = 1.18, 1.22
     jugados, proxima = [], []
 
@@ -65,12 +68,19 @@ def generar_liga(temporadas: int = 3, semilla: int = 7, inicio: date = date(2023
                 mu_c = mu * math.exp(rnd.gauss(0, 0.10))
                 p1x2, pgoles = _probs(lam_c, mu_c)
                 c1x2, cgoles = _cuotas(p1x2, 0.055), _cuotas(pgoles, 0.06)
-                partido = Partido(fecha, local, visitante, None, None, *c1x2, *cgoles)
+                partido = Partido(fecha, local, visitante, liga="EJ",
+                                  cuota_1=c1x2[0], cuota_x=c1x2[1], cuota_2=c1x2[2],
+                                  cuota_mas25=cgoles[0], cuota_menos25=cgoles[1])
                 if ultima:
                     proxima.append(partido)
                     continue
                 partido.goles_local = _poisson_aleatorio(lam, rnd)
                 partido.goles_visitante = _poisson_aleatorio(mu, rnd)
+                # Córners: Poisson con media variable (más dispersos que los goles).
+                partido.corners_local = _poisson_aleatorio(
+                    5.4 * c_ataque[local] * c_defensa[visitante] * rnd.gammavariate(6, 1 / 6), rnd)
+                partido.corners_visitante = _poisson_aleatorio(
+                    4.4 * c_ataque[visitante] * c_defensa[local] * rnd.gammavariate(6, 1 / 6), rnd)
                 jugados.append(partido)
             fecha += timedelta(days=7)
     return jugados, proxima

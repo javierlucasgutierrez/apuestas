@@ -6,16 +6,20 @@ fuentes gratuitas de estadísticas y cuotas más usadas.
 """
 
 import csv
+import os
 from dataclasses import dataclass
 from datetime import date, datetime
 
 # Para cada campo, los nombres de columna que se aceptan (en orden de preferencia).
 COLUMNAS = {
+    "liga": ["liga", "div"],
     "fecha": ["fecha", "date"],
     "local": ["local", "hometeam", "home"],
     "visitante": ["visitante", "awayteam", "away"],
     "goles_local": ["goles_local", "fthg", "hg"],
     "goles_visitante": ["goles_visitante", "ftag", "ag"],
+    "corners_local": ["corners_local", "hc"],
+    "corners_visitante": ["corners_visitante", "ac"],
     "cuota_1": ["cuota_1", "b365h", "psh", "avgh", "bbavh", "psch"],
     "cuota_x": ["cuota_x", "b365d", "psd", "avgd", "bbavd", "pscd"],
     "cuota_2": ["cuota_2", "b365a", "psa", "avga", "bbava", "psca"],
@@ -33,6 +37,9 @@ class Partido:
     visitante: str
     goles_local: int | None = None
     goles_visitante: int | None = None
+    corners_local: int | None = None
+    corners_visitante: int | None = None
+    liga: str = ""
     cuota_1: float | None = None
     cuota_x: float | None = None
     cuota_2: float | None = None
@@ -42,6 +49,10 @@ class Partido:
     @property
     def jugado(self) -> bool:
         return self.goles_local is not None and self.goles_visitante is not None
+
+    @property
+    def con_corners(self) -> bool:
+        return self.corners_local is not None and self.corners_visitante is not None
 
     @property
     def resultado(self) -> str | None:
@@ -112,12 +123,17 @@ def cargar_csv(ruta: str) -> list[Partido]:
         valores = {campo: fila.get(nombre) for campo, nombre in columna.items()}
         goles_local = _numero(valores.get("goles_local"))
         goles_visitante = _numero(valores.get("goles_visitante"))
+        corners_local = _numero(valores.get("corners_local"))
+        corners_visitante = _numero(valores.get("corners_visitante"))
         partidos.append(Partido(
             fecha=_fecha(valores["fecha"]),
             local=valores["local"].strip(),
             visitante=valores["visitante"].strip(),
             goles_local=None if goles_local is None else int(goles_local),
             goles_visitante=None if goles_visitante is None else int(goles_visitante),
+            corners_local=None if corners_local is None else int(corners_local),
+            corners_visitante=None if corners_visitante is None else int(corners_visitante),
+            liga=(valores.get("liga") or "").strip(),
             cuota_1=_numero(valores.get("cuota_1")),
             cuota_x=_numero(valores.get("cuota_x")),
             cuota_2=_numero(valores.get("cuota_2")),
@@ -129,8 +145,20 @@ def cargar_csv(ruta: str) -> list[Partido]:
 
 
 def cargar_varios(rutas: list[str]) -> list[Partido]:
-    """Une varios CSV (por ejemplo, varias temporadas) en una sola lista ordenada."""
-    partidos = [p for ruta in rutas for p in cargar_csv(ruta)]
+    """Une varios CSV (por ejemplo, varias temporadas) en una sola lista ordenada.
+
+    Si una ruta es una carpeta, se leen todos sus CSV menos el de próximos partidos.
+    """
+    archivos = []
+    for ruta in rutas:
+        if os.path.isdir(ruta):
+            archivos += sorted(os.path.join(ruta, f) for f in os.listdir(ruta)
+                               if f.lower().endswith(".csv") and not f.lower().startswith("proximos"))
+        else:
+            archivos.append(ruta)
+    if not archivos:
+        raise ValueError(f"No hay archivos CSV en {', '.join(rutas)}. ¿Has ejecutado 'python app.py descargar'?")
+    partidos = [p for ruta in archivos for p in cargar_csv(ruta)]
     partidos.sort(key=lambda p: p.fecha)
     return partidos
 
@@ -186,6 +214,11 @@ class CaraACara:
     @property
     def pct_mas25(self) -> float:
         return sum(p.goles_local + p.goles_visitante > 2 for p in self.partidos) / self.n if self.n else 0.0
+
+    @property
+    def corners_medios(self) -> float | None:
+        con = [p for p in self.partidos if p.con_corners]
+        return sum(p.corners_local + p.corners_visitante for p in con) / len(con) if con else None
 
     @property
     def pct_ambos_marcan(self) -> float:

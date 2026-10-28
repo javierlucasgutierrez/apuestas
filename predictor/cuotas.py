@@ -1,4 +1,4 @@
-"""Cuotas, margen de la casa, valor esperado y tamaño de la apuesta (Kelly)."""
+"""Cuotas, margen de la casa, valor esperado, cuota mínima y tamaño de la apuesta."""
 
 from dataclasses import dataclass
 
@@ -32,43 +32,59 @@ def kelly(prob: float, cuota: float, fraccion: float = 0.25, tope: float = 0.03)
     return max(0.0, min(completo * fraccion, tope))
 
 
+def normalizar_mercado(texto: str) -> str:
+    """'corners +9.5', 'Córners+9,5', 'goles -2.5', 'btts si'... → nombre interno."""
+    t = texto.strip().lower().replace(" ", "").replace(",", ".").replace("ó", "o")
+    for prefijo, nombre in (("corners", "Córners"), ("corner", "Córners"), ("c", "Córners"),
+                            ("goles", "Goles"), ("g", "Goles")):
+        if t.startswith(prefijo) and len(t) > len(prefijo) and t[len(prefijo)] in "+-":
+            signo, linea = t[len(prefijo)], float(t[len(prefijo) + 1:])
+            return f"{nombre} {signo}{linea}"
+    if t in ("ambossi", "ambosmarcan", "ambosmarcan:si", "btts", "bttssi"):
+        return "Ambos marcan: sí"
+    if t in ("ambosno", "ambosmarcan:no", "bttsno"):
+        return "Ambos marcan: no"
+    if t.upper() in ("1", "X", "2", "1X", "X2", "12"):
+        return t.upper()
+    raise ValueError(f"Mercado no reconocido: {texto!r} (ejemplos: 1, X2, goles+2.5, corners-10.5, ambos si)")
+
+
 @dataclass
-class Oportunidad:
+class Seleccion:
     mercado: str
-    cuota: float
-    prob_modelo: float
-    prob_mercado: float
-    valor: float
-    stake: float
+    prob: float
+    cuota_minima: float
+    cuota: float | None = None
+    stake: float = 0.0
 
     @property
     def cuota_justa(self) -> float:
-        return 1 / self.prob_modelo if self.prob_modelo > 0 else float("inf")
+        return 1 / self.prob
+
+    @property
+    def valor(self) -> float | None:
+        return None if self.cuota is None else valor_esperado(self.prob, self.cuota)
+
+    @property
+    def recomendada(self) -> bool:
+        return self.cuota is not None and self.cuota >= self.cuota_minima
 
 
-def analizar(prediccion, cuotas_1x2: list[float] | None = None,
-             cuotas_goles: list[float] | None = None, umbral: float = 0.05,
-             prob_minima: float = 0.20, cuota_maxima: float = 6.0,
-             fraccion_kelly: float = 0.25, tope_kelly: float = 0.03) -> list[tuple[Oportunidad, bool]]:
-    """Compara el modelo con la casa. Devuelve cada selección y si es apuesta de valor.
+def seleccionar(probs: dict[str, float], cuotas: dict[str, float] | None = None,
+                cuota_min: float = 1.50, umbral: float = 0.05, prob_minima: float = 0.50,
+                fraccion_kelly: float = 0.25, tope_kelly: float = 0.03) -> list[Seleccion]:
+    """Las selecciones con probabilidad suficiente y la cuota mínima a la que merecen la pena.
 
-    Se descartan probabilidades muy bajas y cuotas muy altas: es donde el modelo
-    se equivoca más y donde un error pequeño parece un valor enorme.
+    Cuota mínima = la mayor entre la que pides (1,50) y la que da un valor esperado
+    de al menos `umbral` según el modelo. Si se conoce la cuota, se dice si llega.
     """
-    grupos = []
-    if cuotas_1x2 and all(cuotas_1x2):
-        grupos.append((["1", "X", "2"], cuotas_1x2,
-                       [prediccion.prob_1, prediccion.prob_x, prediccion.prob_2]))
-    if cuotas_goles and all(cuotas_goles):
-        grupos.append((["+2.5", "-2.5"], cuotas_goles,
-                       [prediccion.prob_mas25, prediccion.prob_menos25]))
-
+    cuotas = cuotas or {}
     resultado = []
-    for nombres, cuotas, probs in grupos:
-        mercado = probabilidades_mercado(cuotas)
-        for nombre, cuota, p, pm in zip(nombres, cuotas, probs, mercado):
-            v = valor_esperado(p, cuota)
-            es_valor = v >= umbral and p >= prob_minima and cuota <= cuota_maxima
-            stake = kelly(p, cuota, fraccion_kelly, tope_kelly) if es_valor else 0.0
-            resultado.append((Oportunidad(nombre, cuota, p, pm, v, stake), es_valor))
-    return resultado
+    for mercado, p in probs.items():
+        if p < prob_minima or p <= 0:
+            continue
+        s = Seleccion(mercado, p, max(cuota_min, (1 + umbral) / p), cuotas.get(mercado))
+        if s.recomendada:
+            s.stake = kelly(p, s.cuota, fraccion_kelly, tope_kelly)
+        resultado.append(s)
+    return sorted(resultado, key=lambda s: -s.prob)

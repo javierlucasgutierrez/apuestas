@@ -1,18 +1,32 @@
 """Prueba histórica (backtest) sin trampas.
 
 Se recorre el histórico en orden: para cada partido el modelo solo conoce los
-partidos anteriores a su fecha, se decide la apuesta con las cuotas de ese día
-y después se mira el resultado real. Es la única forma honesta de saber si la
-estrategia habría ganado dinero.
+partidos anteriores a su fecha. Se mide:
+
+1. Calibración: cuando el modelo dice "70 %", ¿pasa de verdad el 70 % de las veces?
+   Es lo que permite fiarse de la cuota mínima, también en córners (de los que
+   no hay cuotas históricas gratuitas).
+2. Dinero: con las cuotas reales del histórico (1X2 y más/menos 2,5 goles), cuánto
+   se habría ganado o perdido siguiendo las reglas de selección.
 """
 
-import math
-from dataclasses import dataclass, field
-from datetime import timedelta
+from collections import defaultdict
+from dataclasses import dataclass, field, replace
+from datetime import date, timedelta
 
-from .cuotas import analizar, probabilidades_mercado
+from .calibracion import ajustar_calibradores, grupo_de
+from .cuotas import seleccionar
 from .datos import Partido
-from .modelo import ModeloPoisson
+from .mercados import Ajustes, Predictor, acierta, familia
+
+TRAMOS = [0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 1.0001]
+
+
+def cuotas_del_partido(p: Partido) -> dict[str, float]:
+    """Cuotas que trae el CSV, con el nombre de mercado interno."""
+    cuotas = {"1": p.cuota_1, "X": p.cuota_x, "2": p.cuota_2,
+              "Goles +2.5": p.cuota_mas25, "Goles -2.5": p.cuota_menos25}
+    return {m: c for m, c in cuotas.items() if c and c > 1}
 
 
 @dataclass
@@ -21,117 +35,121 @@ class Apuesta:
     mercado: str
     cuota: float
     prob: float
-    valor: float
-    stake_kelly: float
     acertada: bool
 
     @property
-    def beneficio_plano(self) -> float:
+    def beneficio(self) -> float:
         return self.cuota - 1 if self.acertada else -1.0
 
 
 @dataclass
+class Calibracion:
+    """Por tramo de probabilidad: nº de casos, suma de probabilidades y aciertos."""
+    tramos: dict[int, list[float]] = field(default_factory=lambda: defaultdict(lambda: [0, 0.0, 0]))
+    brier: float = 0.0
+    casos: int = 0
+    aciertos: int = 0
+
+    def anotar(self, prob: float, ok: bool) -> None:
+        self.casos += 1
+        self.brier += (prob - ok) ** 2
+        self.aciertos += ok
+        if prob >= TRAMOS[0]:
+            i = max(k for k, t in enumerate(TRAMOS) if prob >= t)
+            fila = self.tramos[i]
+            fila[0] += 1
+            fila[1] += prob
+            fila[2] += ok
+
+    def mejora_sobre_media(self) -> float:
+        """Brier skill: 0 = no mejora nada a "usar el % medio"; cuanto más alto, mejor."""
+        if not self.casos:
+            return 0.0
+        frecuencia = self.aciertos / self.casos
+        base = self.casos * frecuencia * (1 - frecuencia)
+        return 1 - self.brier / base if base else 0.0
+
+    def filas(self):
+        """(desde, hasta, casos, prob media, % acierto real)."""
+        for i in sorted(self.tramos):
+            n, suma, ok = self.tramos[i]
+            yield TRAMOS[i], min(TRAMOS[i + 1], 1.0), int(n), suma / n, ok / n
+
+
+@dataclass
 class InformeBacktest:
+    desde: date | None = None
+    hasta: date | None = None
+    partidos: int = 0
+    calibracion: dict[str, Calibracion] = field(default_factory=lambda: defaultdict(Calibracion))
     apuestas: list[Apuesta] = field(default_factory=list)
-    partidos_evaluados: int = 0
-    logloss_modelo: float = 0.0
-    logloss_mercado: float = 0.0
-    brier_modelo: float = 0.0
-    brier_mercado: float = 0.0
-    partidos_con_cuotas: int = 0
-    bank_inicial: float = 100.0
-    bank_final: float = 100.0
-    caida_maxima: float = 0.0
+    calibradores: dict[str, list[float]] = field(default_factory=dict)
 
-    @property
-    def beneficio(self) -> float:
-        return sum(a.beneficio_plano for a in self.apuestas)
-
-    @property
-    def yield_pct(self) -> float:
-        return 100 * self.beneficio / len(self.apuestas) if self.apuestas else 0.0
-
-    @property
-    def aciertos_pct(self) -> float:
-        return 100 * sum(a.acertada for a in self.apuestas) / len(self.apuestas) if self.apuestas else 0.0
-
-    @property
-    def cuota_media(self) -> float:
-        return sum(a.cuota for a in self.apuestas) / len(self.apuestas) if self.apuestas else 0.0
-
-    def por_mercado(self) -> dict[str, tuple[int, float]]:
-        """mercado -> (nº apuestas, beneficio en unidades)."""
-        resumen: dict[str, tuple[int, float]] = {}
-        for a in self.apuestas:
-            n, b = resumen.get(a.mercado, (0, 0.0))
-            resumen[a.mercado] = (n + 1, b + a.beneficio_plano)
-        return resumen
+    def resumen_apuestas(self, filtro=lambda a: True) -> tuple[int, float, float, float]:
+        """(nº, % aciertos, beneficio a 1 € fijo, cuota media)."""
+        lista = [a for a in self.apuestas if filtro(a)]
+        if not lista:
+            return 0, 0.0, 0.0, 0.0
+        return (len(lista), 100 * sum(a.acertada for a in lista) / len(lista),
+                sum(a.beneficio for a in lista), sum(a.cuota for a in lista) / len(lista))
 
 
-def _acierta(mercado: str, p: Partido) -> bool:
-    goles = p.goles_local + p.goles_visitante
-    return {
-        "1": p.resultado == "1", "X": p.resultado == "X", "2": p.resultado == "2",
-        "+2.5": goles > 2, "-2.5": goles <= 2,
-    }[mercado]
+def backtest(partidos: list[Partido], ajustes: Ajustes | None = None, desde: date | None = None,
+             reajuste_dias: int = 7, cuota_min: float = 1.50, umbral: float = 0.05,
+             prob_minima: float = 0.50, calibrar: bool = True, aviso=None) -> InformeBacktest:
+    """Evalúa los partidos a partir de `desde` (por defecto, tras la primera temporada).
 
-
-def backtest(partidos: list[Partido], crear_modelo=ModeloPoisson, partidos_entrenamiento: int = 150,
-             reajuste_dias: int = 7, umbral: float = 0.05, prob_minima: float = 0.20,
-             cuota_maxima: float = 6.0, fraccion_kelly: float = 0.25, tope_kelly: float = 0.03,
-             bank_inicial: float = 100.0) -> InformeBacktest:
+    Con `calibrar`, la corrección de probabilidades se aprende sobre la marcha, solo
+    con los partidos ya evaluados. Al final, `informe.calibradores` tiene la corrección
+    aprendida con todo el periodo, lista para usar en partidos futuros.
+    """
     jugados = sorted((p for p in partidos if p.jugado), key=lambda p: p.fecha)
-    if len(jugados) <= partidos_entrenamiento:
-        raise ValueError(f"Hacen falta más de {partidos_entrenamiento} partidos para el backtest.")
+    if not jugados:
+        raise ValueError("No hay partidos jugados.")
+    desde = desde or jugados[0].fecha + timedelta(days=330)
+    evaluar = [p for p in jugados if p.fecha >= desde]
+    if not evaluar:
+        raise ValueError("No hay partidos que evaluar: hacen falta más temporadas.")
 
-    informe = InformeBacktest(bank_inicial=bank_inicial, bank_final=bank_inicial)
-    bank = maximo = bank_inicial
-    modelo = None
+    informe = InformeBacktest(desde=evaluar[0].fecha, hasta=evaluar[-1].fecha)
+    # La calibración guardada se aprendió con estos mismos partidos: aquí se rehace desde cero.
+    predictor = Predictor(replace(ajustes or Ajustes(), calibracion={}))
+    pares: dict[str, list[tuple[float, bool]]] = defaultdict(list)
     proximo_ajuste = None
-
-    for p in jugados[partidos_entrenamiento:]:
-        if modelo is None or p.fecha >= proximo_ajuste:
-            modelo = crear_modelo().ajustar(jugados, hasta=p.fecha)
+    for p in evaluar:
+        if proximo_ajuste is None or p.fecha >= proximo_ajuste:
+            predictor.ajustar(jugados, hasta=p.fecha)
+            if calibrar:
+                predictor.ajustes.calibracion = ajustar_calibradores(pares)
             proximo_ajuste = p.fecha + timedelta(days=reajuste_dias)
+            if aviso:
+                aviso(p.fecha)
         try:
-            pred = modelo.predecir(p.local, p.visitante, fecha=p.fecha)
+            pred = predictor.predecir(p.local, p.visitante, fecha=p.fecha)
         except KeyError:
-            continue  # equipo recién llegado: todavía no hay datos
+            continue  # equipo recién ascendido sin datos
         if pred.avisos:
             continue
-        informe.partidos_evaluados += 1
-
-        cuotas_1x2 = [p.cuota_1, p.cuota_x, p.cuota_2]
-        if all(cuotas_1x2):
-            informe.partidos_con_cuotas += 1
-            real = {"1": 0, "X": 1, "2": 2}[p.resultado]
-            modelo_p = [pred.prob_1, pred.prob_x, pred.prob_2]
-            mercado_p = probabilidades_mercado(cuotas_1x2)
-            informe.logloss_modelo -= math.log(max(modelo_p[real], 1e-12))
-            informe.logloss_mercado -= math.log(max(mercado_p[real], 1e-12))
-            informe.brier_modelo += sum((q - (i == real)) ** 2 for i, q in enumerate(modelo_p))
-            informe.brier_mercado += sum((q - (i == real)) ** 2 for i, q in enumerate(mercado_p))
-
-        selecciones = analizar(pred, cuotas_1x2, [p.cuota_mas25, p.cuota_menos25], umbral=umbral,
-                               prob_minima=prob_minima, cuota_maxima=cuota_maxima,
-                               fraccion_kelly=fraccion_kelly, tope_kelly=tope_kelly)
-        # Como mucho una apuesta por mercado y partido: la de más valor.
-        for grupo in (("1", "X", "2"), ("+2.5", "-2.5")):
-            candidatas = [o for o, es_valor in selecciones if es_valor and o.mercado in grupo]
-            if not candidatas:
+        informe.partidos += 1
+        for mercado, prob in pred.probs.items():
+            ok = acierta(mercado, p)
+            if ok is None:
                 continue
-            o = max(candidatas, key=lambda o: o.valor)
-            acertada = _acierta(o.mercado, p)
-            informe.apuestas.append(Apuesta(p, o.mercado, o.cuota, o.prob_modelo, o.valor, o.stake, acertada))
-            importe = bank * o.stake
-            bank += importe * (o.cuota - 1) if acertada else -importe
-            maximo = max(maximo, bank)
-            informe.caida_maxima = max(informe.caida_maxima, (maximo - bank) / maximo)
+            informe.calibracion[familia(mercado)].anotar(prob, ok)
+            grupo = grupo_de(mercado)
+            if grupo:
+                pares[grupo].append((pred.probs_brutas[mercado], ok))
 
-    if informe.partidos_con_cuotas:
-        informe.logloss_modelo /= informe.partidos_con_cuotas
-        informe.logloss_mercado /= informe.partidos_con_cuotas
-        informe.brier_modelo /= informe.partidos_con_cuotas
-        informe.brier_mercado /= informe.partidos_con_cuotas
-    informe.bank_final = bank
+        cuotas = cuotas_del_partido(p)
+        elegidas = [s for s in seleccionar(pred.probs, cuotas, cuota_min, umbral, prob_minima)
+                    if s.recomendada]
+        # Como mucho una apuesta por familia y partido: la de más valor.
+        por_familia = {}
+        for s in elegidas:
+            f = familia(s.mercado)
+            if f not in por_familia or s.valor > por_familia[f].valor:
+                por_familia[f] = s
+        for s in por_familia.values():
+            informe.apuestas.append(Apuesta(p, s.mercado, s.cuota, s.prob, acierta(s.mercado, p)))
+    informe.calibradores = ajustar_calibradores(pares)
     return informe

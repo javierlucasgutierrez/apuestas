@@ -1,218 +1,334 @@
-"""Predictor de partidos basado en estadística y probabilidad.
+"""Predictor estadístico de goles y córners para las grandes ligas.
 
 Uso rápido:
-    python app.py ejemplo
-    python app.py equipos   --datos datos/ejemplo_historico.csv
-    python app.py predecir  --datos datos/ejemplo_historico.csv --local "Real Costa" --visitante "CD Ribera" --cuotas 1.9 3.5 4.2
-    python app.py jornada   --datos datos/ejemplo_historico.csv --proximos datos/ejemplo_proxima_jornada.csv
-    python app.py backtest  --datos datos/ejemplo_historico.csv
+    python app.py descargar
+    python app.py jornada
+    python app.py partido --local "Real Madrid" --visitante Getafe --cuota "corners+9.5=1.80"
+    python app.py backtest
+    python app.py optimizar
 
 Ejecuta `python app.py <orden> -h` para ver todas las opciones.
 """
 
 import argparse
+import csv
 import os
 import sys
+from dataclasses import replace
+from datetime import date, timedelta
 
-from predictor.backtest import backtest
-from predictor.cuotas import analizar, margen
+from predictor.backtest import backtest, cuotas_del_partido
+from predictor.cuotas import normalizar_mercado, seleccionar
 from predictor.datos import cara_a_cara, cargar_csv, cargar_varios, guardar_csv
+from predictor.descargar import GRANDES, LIGAS, descargar
 from predictor.ejemplo import generar_liga
-from predictor.modelo import ModeloPoisson
+from predictor.mercados import Ajustes, Predictor, familia
+from predictor.modelo import buscar_equipo
+from predictor.optimizar import optimizar
 
 CARPETA = os.path.dirname(os.path.abspath(__file__))
+DESCARGAS = os.path.join(CARPETA, "datos", "descargas")
+AJUSTES = os.path.join(CARPETA, "ajustes.json")
+NOMBRE_LIGA = {codigo: nombre for codigo, nombre in LIGAS.values()}
 
 
 def pct(x: float) -> str:
-    return f"{100 * x:5.1f}%"
+    return f"{100 * x:.0f}%"
 
 
-def crear_modelo(args) -> ModeloPoisson:
-    return ModeloPoisson(vida_media_dias=args.vida_media, regularizacion=args.regularizacion,
-                         peso_h2h=args.peso_h2h)
+# ------------------------------------------------------------------ opciones
+def opciones_datos(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--datos", nargs="+", default=[DESCARGAS],
+                        help="CSV o carpetas con el histórico (por defecto, lo descargado).")
+    parser.add_argument("--vida-media", type=float,
+                        help="Días tras los que un partido cuenta la mitad (goles y córners).")
+    parser.add_argument("--peso-h2h", type=float, help="Peso de los enfrentamientos directos (0 a 1).")
 
 
-def opciones_modelo(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--datos", nargs="+", required=True,
-                        help="Uno o varios CSV con el histórico de partidos (p. ej. varias temporadas).")
-    parser.add_argument("--vida-media", type=float, default=180,
-                        help="Días tras los que un partido cuenta la mitad (por defecto 180).")
-    parser.add_argument("--regularizacion", type=float, default=3.0,
-                        help="Cuánto se acerca a la media a los equipos con pocos datos (por defecto 3).")
-    parser.add_argument("--peso-h2h", type=float, default=0.0,
-                        help="Peso de los enfrentamientos directos entre 0 y 1 (por defecto 0).")
-
-
-def opciones_apuesta(parser: argparse.ArgumentParser) -> None:
+def opciones_seleccion(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--cuota-min", type=float, default=1.50, help="Cuota mínima que aceptas (1.50).")
     parser.add_argument("--umbral", type=float, default=0.05,
-                        help="Valor esperado mínimo para recomendar apuesta (0.05 = +5 %%).")
-    parser.add_argument("--prob-minima", type=float, default=0.20,
-                        help="No apostar a selecciones con menos probabilidad que esta.")
-    parser.add_argument("--cuota-maxima", type=float, default=6.0, help="No apostar a cuotas mayores.")
-    parser.add_argument("--kelly", type=float, default=0.25, help="Fracción de Kelly (por defecto 1/4).")
-    parser.add_argument("--tope", type=float, default=0.03,
-                        help="Máximo del bank en una sola apuesta (por defecto 3 %%).")
-    parser.add_argument("--bank", type=float, default=100.0, help="Tu bank en euros (por defecto 100).")
+                        help="Valor mínimo según el modelo: 0.05 = la cuota debe pagar un 5%% más de lo justo.")
+    parser.add_argument("--prob-minima", type=float, default=0.55,
+                        help="Solo selecciones con al menos esta probabilidad (0.55).")
+    parser.add_argument("--bank", type=float, default=100.0, help="Tu bank en euros (100).")
 
 
-# ------------------------------------------------------------------- órdenes
-def orden_ejemplo(args) -> None:
-    jugados, proxima = generar_liga()
-    carpeta = os.path.join(CARPETA, "datos")
-    os.makedirs(carpeta, exist_ok=True)
-    historico = os.path.join(carpeta, "ejemplo_historico.csv")
-    proximos = os.path.join(carpeta, "ejemplo_proxima_jornada.csv")
-    guardar_csv(historico, jugados)
-    guardar_csv(proximos, proxima)
-    print(f"Liga ficticia creada: {len(jugados)} partidos jugados y {len(proxima)} por jugar.")
-    print(f"  {os.path.relpath(historico)}\n  {os.path.relpath(proximos)}")
+def leer_ajustes(args) -> Ajustes:
+    ajustes = Ajustes.cargar(AJUSTES)
+    if getattr(args, "vida_media", None):
+        ajustes = replace(ajustes, vida_media_goles=args.vida_media, vida_media_corners=args.vida_media)
+    if getattr(args, "peso_h2h", None) is not None:
+        ajustes = replace(ajustes, peso_h2h=args.peso_h2h)
+    return ajustes
 
 
-def orden_equipos(args) -> None:
+def preparar(args, hasta: date | None = None):
     partidos = cargar_varios(args.datos)
-    modelo = crear_modelo(args).ajustar(partidos)
-    print(f"Modelo ajustado con datos hasta {modelo.fecha_ajuste:%d/%m/%Y}")
-    print(f"Goles de media por equipo: {modelo.base:.2f} · ventaja de jugar en casa: x{modelo.ventaja_campo:.2f}\n")
-    print(f"{'#':>2}  {'Equipo':<24}{'Ataque':>8}{'Defensa':>9}{'Índice':>8}{'PJ':>5}")
-    for i, (t, a, d, indice) in enumerate(modelo.clasificacion_fuerzas(), 1):
-        print(f"{i:>2}  {t:<24}{a:>8.2f}{d:>9.2f}{indice:>+8.2f}{modelo.partidos_equipo[t]:>5}")
-    print("\nAtaque > 1: marca más que la media · Defensa < 1: encaja menos que la media.")
-    print("Índice: diferencia de goles esperada contra un rival medio en campo neutral.")
+    return partidos, Predictor(leer_ajustes(args)).ajustar(partidos, hasta=hasta)
 
 
-def mostrar_prediccion(pred, modelo, args, cuotas_1x2=None, cuotas_goles=None) -> None:
-    print(f"\n{pred.local} vs {pred.visitante}")
-    print("-" * 60)
-    print(f"Goles esperados: {pred.goles_local:.2f} - {pred.goles_visitante:.2f}")
-    print(f"1X2:        1 {pct(pred.prob_1)}   X {pct(pred.prob_x)}   2 {pct(pred.prob_2)}")
-    print(f"Goles:      +2.5 {pct(pred.prob_mas25)}   -2.5 {pct(pred.prob_menos25)}")
-    print(f"Ambos marcan: sí {pct(pred.prob_ambos_si)}   no {pct(pred.prob_ambos_no)}")
-    print("Marcadores más probables: " + ", ".join(f"{m} ({pct(p).strip()})" for m, p in pred.marcadores))
-
-    h2h = cara_a_cara(modelo.historial, pred.local, pred.visitante)
-    if h2h.n:
-        print(f"Cara a cara (últimos {h2h.n}): {pred.local} {h2h.victorias_a} · empates {h2h.empates} · "
-              f"{pred.visitante} {h2h.victorias_b} | goles {h2h.goles_a:.1f}-{h2h.goles_b:.1f} | "
-              f"+2.5 {pct(h2h.pct_mas25).strip()} | ambos marcan {pct(h2h.pct_ambos_marcan).strip()}")
+# ------------------------------------------------------------------ salida
+def mostrar_partido(pred, predictor, args, cuotas: dict[str, float], detalle: bool = True):
+    """Imprime el análisis y devuelve las selecciones."""
+    liga = NOMBRE_LIGA.get(pred.liga, pred.liga)
+    print(f"\n{pred.local} vs {pred.visitante}   [{liga}]")
+    print("-" * 66)
+    linea = f"Esperado: goles {pred.goles_local:.2f}-{pred.goles_visitante:.2f}"
+    if pred.corners_local is not None:
+        linea += (f" · córners {pred.corners_local:.1f}-{pred.corners_visitante:.1f}"
+                  f" (total {pred.corners_local + pred.corners_visitante:.1f})")
+    print(linea)
+    pr = pred.probs
+    print(f"1X2: {pct(pr['1'])} / {pct(pr['X'])} / {pct(pr['2'])} · "
+          f"+2.5 goles {pct(pr['Goles +2.5'])} · ambos marcan {pct(pr['Ambos marcan: sí'])}")
+    if detalle:
+        print("Marcadores más probables: " + ", ".join(f"{m} ({pct(p)})" for m, p in pred.marcadores))
+        h2h = cara_a_cara(predictor.historial, pred.local, pred.visitante)
+        if h2h.n:
+            corners = f" · córners {h2h.corners_medios:.1f}" if h2h.corners_medios is not None else ""
+            print(f"Cara a cara ({h2h.n}): {h2h.victorias_a}-{h2h.empates}-{h2h.victorias_b} · goles "
+                  f"{h2h.goles_a:.1f}-{h2h.goles_b:.1f} · +2.5 {pct(h2h.pct_mas25)}{corners}")
     for aviso in pred.avisos:
         print(f"⚠  {aviso}")
 
-    selecciones = analizar(pred, cuotas_1x2, cuotas_goles, umbral=args.umbral, prob_minima=args.prob_minima,
-                           cuota_maxima=args.cuota_maxima, fraccion_kelly=args.kelly, tope_kelly=args.tope)
+    # Sin cuota conocida, se omiten las selecciones cuya cuota mínima queda muy por encima
+    # de la justa (más del ~73 %): ninguna casa las va a pagar a ese precio.
+    selecciones = [s for s in seleccionar(pred.probs, cuotas, args.cuota_min, args.umbral, args.prob_minima)
+                   if s.cuota is not None or s.cuota_minima <= s.cuota_justa * 1.10]
     if not selecciones:
-        print("(Sin cuotas: solo probabilidades. Añade --cuotas para buscar valor.)")
-        return
-    if cuotas_1x2 and all(cuotas_1x2):
-        print(f"\nMargen de la casa en 1X2: {pct(margen(cuotas_1x2)).strip()}")
-    print(f"{'Apuesta':<9}{'Cuota':>7}{'Justa':>7}{'Modelo':>8}{'Casa':>8}{'Valor':>8}   Apostar")
-    for o, es_valor in selecciones:
-        consejo = f"SÍ · {args.bank * o.stake:.2f} € ({pct(o.stake).strip()} del bank)" if es_valor else "no"
-        if pred.avisos and es_valor:
-            consejo = "dudoso (pocos datos)"
-        print(f"{o.mercado:<9}{o.cuota:>7.2f}{o.cuota_justa:>7.2f}{pct(o.prob_modelo):>8}"
-              f"{pct(o.prob_mercado):>8}{100 * o.valor:>+7.1f}%   {consejo}")
+        print("Ninguna selección llega a la probabilidad mínima.")
+        return []
+    print(f"{'Selección':<20}{'Prob.':>6}{'Justa':>7}{'Mínima':>8}{'Cuota':>7}   ")
+    for s in selecciones:
+        if s.cuota is None:
+            consejo = f"busca cuota ≥ {s.cuota_minima:.2f}"
+            cuota = "-"
+        elif s.recomendada and not pred.avisos:
+            consejo = f"APOSTAR {args.bank * s.stake:.2f} € (valor {100 * s.valor:+.0f}%)"
+            cuota = f"{s.cuota:.2f}"
+        else:
+            consejo = "no llega" if not s.recomendada else "dudoso: pocos datos"
+            cuota = f"{s.cuota:.2f}"
+        print(f"{s.mercado:<20}{pct(s.prob):>6}{s.cuota_justa:>7.2f}{s.cuota_minima:>8.2f}{cuota:>7}   {consejo}")
+    return selecciones
 
 
-def orden_predecir(args) -> None:
-    partidos = cargar_varios(args.datos)
-    modelo = crear_modelo(args).ajustar(partidos)
-    pred = modelo.predecir(args.local, args.visitante)
-    mostrar_prediccion(pred, modelo, args, args.cuotas, args.cuotas_goles)
+def leer_cuotas_manuales(ruta: str, equipos: list[str]) -> dict[tuple[str, str], dict[str, float]]:
+    """CSV con columnas local, visitante, mercado, cuota (copiadas de Oddspedia)."""
+    resultado: dict[tuple[str, str], dict[str, float]] = {}
+    with open(ruta, encoding="utf-8-sig", newline="") as f:
+        texto = f.read()
+    separador = ";" if texto.splitlines()[0].count(";") > texto.splitlines()[0].count(",") else ","
+    for fila in csv.DictReader(texto.splitlines(), delimiter=separador):
+        fila = {k.strip().lower(): (v or "").strip() for k, v in fila.items() if k}
+        if not fila.get("local"):
+            continue
+        clave = (buscar_equipo(fila["local"], equipos), buscar_equipo(fila["visitante"], equipos))
+        resultado.setdefault(clave, {})[normalizar_mercado(fila["mercado"])] = float(fila["cuota"].replace(",", "."))
+    return resultado
+
+
+# ------------------------------------------------------------------ órdenes
+def orden_descargar(args) -> None:
+    print("Descargando de football-data.co.uk...")
+    descargar(args.carpeta, args.ligas, args.temporadas)
+    print(f"Listo. Datos en {os.path.relpath(args.carpeta)}")
+
+
+def orden_equipos(args) -> None:
+    _, predictor = preparar(args)
+    for liga, mg in sorted(predictor.goles.items()):
+        if args.liga and args.liga.lower() not in (liga.lower(), NOMBRE_LIGA.get(liga, "").lower()):
+            continue
+        mc = predictor.corners.get(liga)
+        print(f"\n{NOMBRE_LIGA.get(liga, liga)} · datos hasta {mg.fecha_ajuste:%d/%m/%Y}")
+        print(f"Por partido contra un rival medio en campo neutral (ventaja de casa en goles x{mg.ventaja_campo:.2f})")
+        print(f"{'#':>2}  {'Equipo':<22}{'Goles F':>8}{'Goles C':>8}{'Dif':>6}   {'Córn. F':>8}{'Córn. C':>8}{'Total':>7}")
+        for i, (t, gf, gc, dif) in enumerate(mg.clasificacion(), 1):
+            if mc and mc.conoce(t):
+                cf, cc = mc.base * mc.ataque[t], mc.base * mc.defensa[t]
+                corners = f"{cf:>8.1f}{cc:>8.1f}{cf + cc:>7.1f}"
+            else:
+                corners = ""
+            print(f"{i:>2}  {t:<22}{gf:>8.2f}{gc:>8.2f}{dif:>+6.2f}   {corners}")
+
+
+def orden_partido(args) -> None:
+    _, predictor = preparar(args)
+    cuotas = {}
+    for texto in args.cuota or []:
+        mercado, _, valor = texto.partition("=")
+        if not valor:
+            sys.exit(f"Error: escribe la cuota como mercado=cuota, por ejemplo corners+9.5=1.80 (recibido {texto!r})")
+        cuotas[normalizar_mercado(mercado)] = float(valor.replace(",", "."))
+    pred = predictor.predecir(args.local, args.visitante)
+    mostrar_partido(pred, predictor, args, cuotas)
 
 
 def orden_jornada(args) -> None:
-    partidos = cargar_varios(args.datos)
     proximos = [p for p in cargar_csv(args.proximos) if not p.jugado]
+    hoy = date.today() if not args.desde else date.fromisoformat(args.desde)
+    proximos = [p for p in proximos if hoy <= p.fecha <= hoy + timedelta(days=args.dias)]
+    if args.liga:
+        codigos = {LIGAS[l][0] if l in LIGAS else l for l in args.liga}
+        proximos = [p for p in proximos if p.liga in codigos]
     if not proximos:
-        print("No hay partidos sin resultado en", args.proximos)
+        print("No hay próximos partidos en esas fechas. Prueba 'python app.py descargar' o amplía --dias.")
         return
-    modelo = crear_modelo(args).ajustar(partidos, hasta=min(p.fecha for p in proximos))
-    resumen = []
+    _, predictor = preparar(args)
+    manuales = leer_cuotas_manuales(args.cuotas, predictor.equipos) if args.cuotas else {}
+
+    apostar, mirar = [], []
     for p in proximos:
         try:
-            pred = modelo.predecir(p.local, p.visitante, fecha=p.fecha)
+            pred = predictor.predecir(p.local, p.visitante, fecha=p.fecha)
         except KeyError as e:
             print(f"\n{p.local} vs {p.visitante}: {e.args[0]}")
             continue
-        cuotas_1x2 = [p.cuota_1, p.cuota_x, p.cuota_2]
-        cuotas_goles = [p.cuota_mas25, p.cuota_menos25]
-        mostrar_prediccion(pred, modelo, args, cuotas_1x2, cuotas_goles)
-        if not pred.avisos:
-            for o, es_valor in analizar(pred, cuotas_1x2, cuotas_goles, umbral=args.umbral,
-                                        prob_minima=args.prob_minima, cuota_maxima=args.cuota_maxima,
-                                        fraccion_kelly=args.kelly, tope_kelly=args.tope):
-                if es_valor:
-                    resumen.append((p, o))
+        cuotas = cuotas_del_partido(p) | manuales.get((pred.local, pred.visitante), {})
+        print(f"\n{p.fecha:%a %d/%m}", end="")
+        for s in mostrar_partido(pred, predictor, args, cuotas, detalle=False):
+            if pred.avisos:
+                continue
+            if s.recomendada:
+                apostar.append((p, s))
+            elif s.cuota is None:
+                mirar.append((p, s))
 
-    print("\n" + "=" * 60)
-    print("RESUMEN: apuestas con valor según el modelo")
-    print("=" * 60)
-    if not resumen:
-        print("Ninguna. No apostar también es una decisión correcta.")
-    for p, o in sorted(resumen, key=lambda x: -x[1].valor):
-        print(f"{p.fecha:%d/%m}  {p.local} - {p.visitante}: {o.mercado} @ {o.cuota:.2f} "
-              f"(valor {100 * o.valor:+.1f}%) → {args.bank * o.stake:.2f} €")
+    print("\n" + "=" * 66)
+    print(f"APUESTAS CON VALOR (cuota conocida ≥ {args.cuota_min:.2f} y ≥ cuota mínima)")
+    print("=" * 66)
+    if not apostar:
+        print("Ninguna con las cuotas conocidas. No apostar también es una decisión correcta.")
+    for p, s in sorted(apostar, key=lambda x: -x[1].valor):
+        print(f"{p.fecha:%d/%m}  {p.local} - {p.visitante}: {s.mercado} @ {s.cuota:.2f} "
+              f"({pct(s.prob)}, valor {100 * s.valor:+.0f}%) → {args.bank * s.stake:.2f} €")
+    print(f"\nPARA MIRAR EN ODDSPEDIA (apuesta solo si encuentras la cuota mínima o más)")
+    print("-" * 66)
+    for p, s in sorted(mirar, key=lambda x: -x[1].prob)[:args.top]:
+        print(f"{p.fecha:%d/%m}  {p.local} - {p.visitante}: {s.mercado:<16} {pct(s.prob):>4}  "
+              f"cuota mínima {s.cuota_minima:.2f}")
 
 
 def orden_backtest(args) -> None:
     partidos = cargar_varios(args.datos)
-    print("Calculando (el modelo se reajusta cada semana con lo que se sabía en ese momento)...")
-    inf = backtest(partidos, crear_modelo=lambda: crear_modelo(args),
-                   partidos_entrenamiento=args.entrenamiento, umbral=args.umbral, prob_minima=args.prob_minima,
-                   cuota_maxima=args.cuota_maxima, fraccion_kelly=args.kelly, tope_kelly=args.tope,
-                   bank_inicial=args.bank)
-    print(f"\nPartidos evaluados: {inf.partidos_evaluados} (con cuotas 1X2: {inf.partidos_con_cuotas})")
-    if inf.partidos_con_cuotas:
-        print("\nPrecisión de las probabilidades en 1X2 (más bajo = mejor):")
-        print(f"  Log-loss  modelo {inf.logloss_modelo:.4f} · casa {inf.logloss_mercado:.4f}")
-        print(f"  Brier     modelo {inf.brier_modelo:.4f} · casa {inf.brier_mercado:.4f}")
-        if inf.logloss_modelo > inf.logloss_mercado:
-            print("  → La casa predice mejor que el modelo en general (lo normal).")
-        else:
-            print("  → El modelo predice mejor que la casa en general.")
-    print(f"\nApuestas de valor: {len(inf.apuestas)} · aciertos {inf.aciertos_pct:.1f}% · cuota media {inf.cuota_media:.2f}")
-    print(f"Apostando 1 € fijo a cada una: {inf.beneficio:+.2f} € · yield {inf.yield_pct:+.2f}%")
-    for mercado, (n, b) in sorted(inf.por_mercado().items()):
-        print(f"   {mercado:<6} {n:>4} apuestas  {b:+8.2f} €  ({100 * b / n:+.1f}%)")
-    print(f"Con Kelly fraccionado: bank {inf.bank_inicial:.2f} € → {inf.bank_final:.2f} € "
-          f"(peor caída {100 * inf.caida_maxima:.1f}%)")
-    if len(inf.apuestas) < 300:
-        print("\n⚠  Menos de 300 apuestas: el resultado puede deberse a la suerte. Usa más temporadas.")
+    print("Calculando: el modelo se reajusta cada semana solo con lo que se sabía en ese momento...")
+    desde = date.fromisoformat(args.desde) if args.desde else None
+    inf = backtest(partidos, leer_ajustes(args), desde=desde, reajuste_dias=args.reajuste,
+                   cuota_min=args.cuota_min, umbral=args.umbral, prob_minima=args.prob_minima,
+                   aviso=lambda f: print(f"  {f:%m/%Y}", end="\r", flush=True))
+    print(f"\nPartidos evaluados: {inf.partidos} ({inf.desde:%d/%m/%Y} - {inf.hasta:%d/%m/%Y})")
+
+    print("\n1) ¿SE CUMPLEN LAS PROBABILIDADES?  (prob. del modelo vs. lo que pasó de verdad)")
+    for nombre in ("1X2", "Doble oportunidad", "Goles más/menos", "Ambos marcan", "Córners más/menos"):
+        cal = inf.calibracion.get(nombre)
+        if not cal or not cal.casos:
+            continue
+        print(f"\n  {nombre} · mejora frente a usar el % medio: {100 * cal.mejora_sobre_media():+.1f}%")
+        print(f"  {'Tramo':<11}{'Casos':>7}{'Modelo':>8}{'Real':>7}{'Cuota para no perder':>23}")
+        for desde_t, hasta_t, n, prob, real in cal.filas():
+            if n < 20:
+                continue
+            print(f"  {pct(desde_t):>4}-{pct(hasta_t):<5}{n:>8}{pct(prob):>8}{pct(real):>7}{1 / real if real else 0:>15.2f}")
+
+    print("\n2) DINERO CON LAS CUOTAS REALES DEL HISTÓRICO (1X2 y más/menos 2,5 goles, apuesta fija de 1 €)")
+    print(f"   Reglas: cuota ≥ {args.cuota_min:.2f}, valor ≥ {pct(args.umbral)}, probabilidad ≥ {pct(args.prob_minima)}")
+    n, aciertos, beneficio, cuota = inf.resumen_apuestas()
+    if not n:
+        print("   Ninguna apuesta cumple las reglas.")
+    else:
+        print(f"   Total: {n} apuestas · aciertos {aciertos:.1f}% · cuota media {cuota:.2f} · "
+              f"beneficio {beneficio:+.2f} € (yield {100 * beneficio / n:+.1f}%)")
+        for mercado in ("1", "X", "2", "Goles +2.5", "Goles -2.5"):
+            n, aciertos, beneficio, cuota = inf.resumen_apuestas(lambda a: a.mercado == mercado)
+            if n:
+                print(f"     {mercado:<11}{n:>5} apuestas · aciertos {aciertos:5.1f}% · cuota media {cuota:.2f}"
+                      f" · {beneficio:+8.2f} € ({100 * beneficio / n:+.1f}%)")
+        if inf.resumen_apuestas()[0] < 300:
+            print("   ⚠  Menos de 300 apuestas: el resultado puede ser pura suerte.")
+
+
+def orden_optimizar(args) -> None:
+    partidos = cargar_varios(args.datos)
+    print("Probando combinaciones (puede tardar varios minutos)...")
+    mejor = optimizar(partidos)
+    ajustes = Ajustes.cargar(AJUSTES)
+    if "goles" in mejor:
+        ajustes.vida_media_goles = mejor["goles"]["vida_media"]
+        ajustes.regularizacion_goles = mejor["goles"]["regularizacion"]
+    if "corners" in mejor:
+        ajustes.vida_media_corners = mejor["corners"]["vida_media"]
+        ajustes.regularizacion_corners = mejor["corners"]["regularizacion"]
+    print("\nAprendiendo la corrección de probabilidades con los aciertos y fallos pasados...")
+    ajustes.calibracion = backtest(partidos, ajustes).calibradores
+    ajustes.guardar(AJUSTES)
+    print(f"\nMejores ajustes guardados en {os.path.relpath(AJUSTES)}:")
+    print(f"  Goles:   vida media {ajustes.vida_media_goles:.0f} días · regularización {ajustes.regularizacion_goles}")
+    print(f"  Córners: vida media {ajustes.vida_media_corners:.0f} días · regularización {ajustes.regularizacion_corners}")
+    print("Se usarán automáticamente en el resto de órdenes.")
+
+
+def orden_ejemplo(args) -> None:
+    jugados, proxima = generar_liga()
+    carpeta = os.path.join(CARPETA, "datos", "ejemplo")
+    os.makedirs(carpeta, exist_ok=True)
+    guardar_csv(os.path.join(carpeta, "historico.csv"), jugados)
+    guardar_csv(os.path.join(carpeta, "proximos.csv"), proxima)
+    print(f"Liga ficticia creada en {os.path.relpath(carpeta)}: {len(jugados)} partidos jugados y "
+          f"{len(proxima)} por jugar.\nPruébala con:  python app.py jornada --datos {os.path.relpath(carpeta)} "
+          f"--proximos {os.path.relpath(os.path.join(carpeta, 'proximos.csv'))} --desde {proxima[0].fecha}")
 
 
 def main(argv=None) -> None:
-    parser = argparse.ArgumentParser(description="Predictor estadístico de partidos y apuestas de valor.")
+    parser = argparse.ArgumentParser(description="Predictor estadístico de goles y córners.")
     sub = parser.add_subparsers(dest="orden", required=True)
 
-    p = sub.add_parser("ejemplo", help="Crea una liga ficticia para probar la herramienta.")
-    p.set_defaults(func=orden_ejemplo)
+    p = sub.add_parser("descargar", help="Baja resultados, córners y cuotas de las grandes ligas.")
+    p.add_argument("--ligas", nargs="+", default=GRANDES, choices=list(LIGAS),
+                   help=f"Por defecto: {' '.join(GRANDES)}.")
+    p.add_argument("--temporadas", type=int, default=4, help="Cuántas temporadas (4).")
+    p.add_argument("--carpeta", default=DESCARGAS)
+    p.set_defaults(func=orden_descargar)
 
-    p = sub.add_parser("equipos", help="Ranking de fuerza de ataque y defensa de cada equipo.")
-    opciones_modelo(p)
+    p = sub.add_parser("equipos", help="Goles y córners a favor y en contra de cada equipo.")
+    opciones_datos(p)
+    p.add_argument("--liga", help="Solo una liga (por ejemplo SP1).")
     p.set_defaults(func=orden_equipos)
 
-    p = sub.add_parser("predecir", help="Probabilidades de un partido y, con cuotas, si hay valor.")
-    opciones_modelo(p)
-    opciones_apuesta(p)
+    p = sub.add_parser("partido", help="Analiza un partido. Añade --cuota para saber si apostar.")
+    opciones_datos(p)
+    opciones_seleccion(p)
     p.add_argument("--local", required=True)
     p.add_argument("--visitante", required=True)
-    p.add_argument("--cuotas", nargs=3, type=float, metavar=("C1", "CX", "C2"), help="Cuotas 1 X 2.")
-    p.add_argument("--cuotas-goles", nargs=2, type=float, metavar=("MAS25", "MENOS25"),
-                   help="Cuotas de más y menos de 2,5 goles.")
-    p.set_defaults(func=orden_predecir)
+    p.add_argument("--cuota", nargs="+", metavar="MERCADO=CUOTA",
+                   help='Cuotas que ves en Oddspedia, p. ej. "corners+9.5=1.80" "goles-2.5=1.70" "1=2.10".')
+    p.set_defaults(func=orden_partido)
 
-    p = sub.add_parser("jornada", help="Analiza todos los partidos de un CSV de próximos partidos.")
-    opciones_modelo(p)
-    opciones_apuesta(p)
-    p.add_argument("--proximos", required=True, help="CSV con los partidos por jugar y sus cuotas.")
+    p = sub.add_parser("jornada", help="Analiza los próximos partidos y dice qué mirar en Oddspedia.")
+    opciones_datos(p)
+    opciones_seleccion(p)
+    p.add_argument("--proximos", default=os.path.join(DESCARGAS, "proximos.csv"))
+    p.add_argument("--cuotas", help="CSV con cuotas copiadas (columnas local, visitante, mercado, cuota).")
+    p.add_argument("--dias", type=int, default=3, help="Partidos de los próximos N días (3).")
+    p.add_argument("--desde", help="Fecha inicial AAAA-MM-DD (por defecto hoy).")
+    p.add_argument("--liga", nargs="+", help="Solo estas ligas (laliga, premier... o SP1, E0...).")
+    p.add_argument("--top", type=int, default=20, help="Cuántas selecciones listar para mirar (20).")
     p.set_defaults(func=orden_jornada)
 
-    p = sub.add_parser("backtest", help="Comprueba cuánto habría ganado o perdido la estrategia en el pasado.")
-    opciones_modelo(p)
-    opciones_apuesta(p)
-    p.add_argument("--entrenamiento", type=int, default=150,
-                   help="Partidos iniciales que solo sirven para aprender (por defecto 150).")
+    p = sub.add_parser("backtest", help="¿Se cumplen las probabilidades? ¿Habría ganado dinero?")
+    opciones_datos(p)
+    opciones_seleccion(p)
+    p.add_argument("--desde", help="Evaluar desde esta fecha AAAA-MM-DD (por defecto, tras la 1.ª temporada).")
+    p.add_argument("--reajuste", type=int, default=7, help="Cada cuántos días se reajusta el modelo (7).")
     p.set_defaults(func=orden_backtest)
+
+    p = sub.add_parser("optimizar", help="Busca cuánto pasado usar para predecir mejor y lo guarda.")
+    opciones_datos(p)
+    p.set_defaults(func=orden_optimizar)
+
+    p = sub.add_parser("ejemplo", help="Crea una liga ficticia para probar sin conexión.")
+    p.set_defaults(func=orden_ejemplo)
 
     args = parser.parse_args(argv)
     try:
