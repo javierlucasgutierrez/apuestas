@@ -7,10 +7,12 @@ from datetime import date
 
 from .calibracion import aplicar
 from .datos import Partido, cara_a_cara
-from .modelo import ModeloFuerzas, buscar_equipo
+from .modelo import ModeloFuerzas, buscar_equipo, poisson
 
 LINEAS_GOLES = [1.5, 2.5, 3.5]
 LINEAS_CORNERS = [7.5, 8.5, 9.5, 10.5, 11.5, 12.5]
+LINEAS_1T = [0.5, 1.5]
+PRIMERA = "1ª parte goles"
 
 
 def familia(mercado: str) -> str:
@@ -21,6 +23,8 @@ def familia(mercado: str) -> str:
         return "Doble oportunidad"
     if mercado.startswith("Ambos"):
         return "Ambos marcan"
+    if mercado.startswith(PRIMERA):
+        return "1ª parte goles"
     if mercado.startswith("Goles"):
         return "Goles más/menos"
     return "Córners más/menos"
@@ -32,6 +36,11 @@ def acierta(mercado: str, p: Partido) -> bool | None:
         if not p.con_corners:
             return None
         total, linea = p.corners_local + p.corners_visitante, float(mercado.split()[1][1:])
+        return total > linea if "+" in mercado else total < linea
+    if mercado.startswith(PRIMERA):
+        if p.goles_local_1t is None or p.goles_visitante_1t is None:
+            return None
+        total, linea = p.goles_local_1t + p.goles_visitante_1t, float(mercado.split()[-1][1:])
         return total > linea if "+" in mercado else total < linea
     if not p.jugado:
         return None
@@ -92,6 +101,7 @@ class Predictor:
         self.goles: dict[str, ModeloFuerzas] = {}
         self.corners: dict[str, ModeloFuerzas] = {}
         self.historial: list[Partido] = []
+        self.fraccion_1t: dict[str, float] = {}
 
     def ajustar(self, partidos: list[Partido], hasta: date | None = None) -> "Predictor":
         """Ajusta cada liga. Si ya estaba ajustado, parte de lo anterior (mucho más rápido)."""
@@ -111,6 +121,12 @@ class Predictor:
                     modelos.pop(liga, None)  # sin datos suficientes (p. ej. sin córners)
         if not self.goles:
             raise ValueError("No hay partidos suficientes para ajustar ninguna liga.")
+        # Qué parte de los goles cae en la 1ª parte, por liga (suele rondar el 44-45 %).
+        for liga, lista in por_liga.items():
+            con = [p for p in lista if p.jugado and p.goles_local_1t is not None and p.goles_visitante_1t is not None]
+            total = sum(p.goles_local + p.goles_visitante for p in con)
+            if len(con) >= 50 and total:
+                self.fraccion_1t[liga] = sum(p.goles_local_1t + p.goles_visitante_1t for p in con) / total
         self.historial = [p for p in partidos if p.jugado and (hasta is None or p.fecha < hasta)]
         return self
 
@@ -159,6 +175,16 @@ class Predictor:
         ambos_no = sum(m[0]) + sum(m[i][0] for i in range(1, n))
         probs["Ambos marcan: sí"] = 1 - ambos_no
         probs["Ambos marcan: no"] = ambos_no
+
+        # 1ª parte: los goles esperados del partido por la fracción que cae antes del descanso.
+        if liga in self.fraccion_1t:
+            x = self.fraccion_1t[liga] * (lam + mu)
+            acumulada = 0.0
+            for k in range(int(max(LINEAS_1T)) + 1):
+                acumulada += poisson(k, x)
+                if k + 0.5 in LINEAS_1T:
+                    probs[f"{PRIMERA} +{k + 0.5}"] = 1 - acumulada
+                    probs[f"{PRIMERA} -{k + 0.5}"] = acumulada
 
         c_local = c_visitante = None
         mc = self.corners.get(liga)

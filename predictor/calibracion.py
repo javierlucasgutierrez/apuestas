@@ -28,6 +28,8 @@ def grupo_de(mercado: str) -> str | None:
     se equivoca igual en "más de 1,5" que en "más de 3,5"."""
     if mercado in ("1", "2"):
         return "victoria_local" if mercado == "1" else "victoria_visitante"
+    if mercado.startswith("1ª parte goles +"):
+        return f"1t goles {mercado.split()[-1][1:]}"
     if mercado.startswith(("Goles +", "Córners +")):
         tipo, linea = mercado.split()
         return f"{'goles' if tipo == 'Goles' else 'corners'} {linea[1:]}"
@@ -85,7 +87,7 @@ def aplicar(probs: dict[str, float], calibradores: dict[str, list[float]]) -> di
             continue
         q = _corregir(p, calibradores[grupo])
         corregidas[mercado] = q
-        if mercado.startswith(("Goles +", "Córners +")):
+        if "+" in mercado:
             corregidas[mercado.replace("+", "-")] = 1 - q
         else:
             corregidas["Ambos marcan: no"] = 1 - q

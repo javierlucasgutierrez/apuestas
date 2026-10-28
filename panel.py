@@ -123,9 +123,10 @@ def datos_picks(dias: int) -> dict:
 
 
 # Qué se enseña en las pestañas de goles y córners (salen del modelo, no de comparar casas).
-# Goles: solo "más de" 1,5 / 2,5 / 3,5 y cuota mínima entre 1,60 y 2,10. Córners: las dos direcciones.
+# Goles: "más de" 1,5 / 2,5 / 3,5 y 1ª parte (más/menos 0,5 y 1,5), con cuota mínima entre 1,60
+# y 2,10. Córners: las dos direcciones.
 MODELO = {
-    "goles": {"prefijo": "Goles +", "cuota_min": 1.60, "cuota_max": 2.10, "prob_minima": 0.50},
+    "goles": {"prefijo": ("Goles +", "1ª parte goles"), "cuota_min": 1.60, "cuota_max": 2.10, "prob_minima": 0.45},
     "corners": {"prefijo": "Córners", "cuota_min": 1.50, "cuota_max": 2.60, "prob_minima": 0.55},
 }
 
@@ -191,7 +192,8 @@ def datos_modelo(dias: int, tipo: str) -> dict:
     # Una sola línea por partido: la más probable de las que pasan el filtro.
     mejores: dict = {}
     for c in lista:
-        clave = (c["fecha"], c["local"], c["visitante"])
+        # Una del partido completo y otra de la 1ª parte, como mucho.
+        clave = (c["fecha"], c["local"], c["visitante"], c["mercado"].startswith("1ª parte"))
         if clave not in mejores or c["guardado"] or (c["prob"] > mejores[clave]["prob"]
                                                      and not mejores[clave]["guardado"]):
             mejores[clave] = c

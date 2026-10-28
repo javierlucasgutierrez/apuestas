@@ -393,6 +393,14 @@ def liquidar(fila: dict, mercado: str, cuota: float) -> tuple[float | None, floa
         cierre = precio_justo(fila, "1X2", cierre=True)
         if cierre:
             clv = cuota * cierre[0][i] - 1
+    elif mercado.startswith("1ª parte goles "):
+        try:
+            total_1t = int(fila["HTHG"]) + int(fila["HTAG"])
+        except (KeyError, ValueError, TypeError):
+            return None, None
+        texto = mercado.split()[-1]
+        ok = total_1t > float(texto[1:]) if texto.startswith("+") else total_1t < float(texto[1:])
+        beneficio = cuota - 1 if ok else -1.0
     elif mercado.startswith("Goles asiático "):
         texto = mercado.split()[2]
         beneficio = beneficio_total_asiatico(gl + gv, float(texto[1:]), texto.startswith("+"), cuota)

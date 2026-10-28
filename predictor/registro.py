@@ -154,6 +154,10 @@ def descripcion(p: "Pick") -> str:
     if m.startswith("Hándicap "):
         _, equipo, linea = m.split()
         return f"{p.local if equipo == 'local' else p.visitante} {linea} (hándicap asiático)"
+    if m.startswith("1ª parte goles "):
+        linea = m.split()[-1]
+        texto = "Más de" if linea.startswith("+") else "Menos de"
+        return f"{texto} {linea[1:].replace('.', ',')} goles en la 1ª parte"
     if m.startswith("Goles asiático "):
         linea = m.split()[2]
         texto = "Más de" if linea.startswith("+") else "Menos de"

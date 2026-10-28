@@ -18,6 +18,8 @@ COLUMNAS = {
     "visitante": ["visitante", "awayteam", "away"],
     "goles_local": ["goles_local", "fthg", "hg"],
     "goles_visitante": ["goles_visitante", "ftag", "ag"],
+    "goles_local_1t": ["goles_local_1t", "hthg"],
+    "goles_visitante_1t": ["goles_visitante_1t", "htag"],
     "corners_local": ["corners_local", "hc"],
     "corners_visitante": ["corners_visitante", "ac"],
     "cuota_1": ["cuota_1", "b365h", "psh", "avgh", "bbavh", "psch"],
@@ -37,6 +39,8 @@ class Partido:
     visitante: str
     goles_local: int | None = None
     goles_visitante: int | None = None
+    goles_local_1t: int | None = None
+    goles_visitante_1t: int | None = None
     corners_local: int | None = None
     corners_visitante: int | None = None
     liga: str = ""
@@ -123,6 +127,8 @@ def cargar_csv(ruta: str) -> list[Partido]:
         valores = {campo: fila.get(nombre) for campo, nombre in columna.items()}
         goles_local = _numero(valores.get("goles_local"))
         goles_visitante = _numero(valores.get("goles_visitante"))
+        goles_local_1t = _numero(valores.get("goles_local_1t"))
+        goles_visitante_1t = _numero(valores.get("goles_visitante_1t"))
         corners_local = _numero(valores.get("corners_local"))
         corners_visitante = _numero(valores.get("corners_visitante"))
         partidos.append(Partido(
@@ -131,6 +137,8 @@ def cargar_csv(ruta: str) -> list[Partido]:
             visitante=valores["visitante"].strip(),
             goles_local=None if goles_local is None else int(goles_local),
             goles_visitante=None if goles_visitante is None else int(goles_visitante),
+            goles_local_1t=None if goles_local_1t is None else int(goles_local_1t),
+            goles_visitante_1t=None if goles_visitante_1t is None else int(goles_visitante_1t),
             corners_local=None if corners_local is None else int(corners_local),
             corners_visitante=None if corners_visitante is None else int(corners_visitante),
             liga=(valores.get("liga") or "").strip(),

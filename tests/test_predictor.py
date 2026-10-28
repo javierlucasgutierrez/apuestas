@@ -357,5 +357,29 @@ class TestGolesAsiaticos(unittest.TestCase):
         self.assertAlmostEqual(liquidar({"FTHG": "2", "FTAG": "1"}, ops[0].mercado, 2.08)[0], 0.54)
 
 
+class TestPrimeraParte(unittest.TestCase):
+    def test_probabilidades_y_liquidacion(self):
+        from predictor.mercados import acierta
+        from predictor.registro import descripcion
+        from predictor.valor import Oportunidad, liquidar
+        p = Partido(date(2025, 1, 1), "A", "B", 2, 1, goles_local_1t=1, goles_visitante_1t=0)
+        self.assertTrue(acierta("1ª parte goles +0.5", p))
+        self.assertFalse(acierta("1ª parte goles +1.5", p))
+        self.assertTrue(acierta("1ª parte goles -1.5", p))
+        self.assertAlmostEqual(liquidar({"FTHG": "2", "FTAG": "1", "HTHG": "0", "HTAG": "0"},
+                                        "1ª parte goles +0.5", 1.7)[0], -1.0)
+        o = Oportunidad(date(2025, 1, 1), "", "A", "B", "1ª parte goles -1.5", "", 1.7, 0.6, "")
+        self.assertEqual(descripcion(o), "Menos de 1,5 goles en la 1ª parte")
+
+    def test_el_modelo_da_la_primera_parte(self):
+        jugados, proxima = generar_liga()
+        for i, p in enumerate(jugados):  # la liga de ejemplo no trae descanso: se inventa uno coherente
+            p.goles_local_1t, p.goles_visitante_1t = p.goles_local // 2, p.goles_visitante // 2 + i % 2 * 0
+        pred = Predictor().ajustar(jugados).predecir(proxima[0].local, proxima[0].visitante)
+        self.assertAlmostEqual(pred.probs["1ª parte goles +0.5"] + pred.probs["1ª parte goles -0.5"], 1.0)
+        self.assertGreater(pred.probs["1ª parte goles +0.5"], pred.probs["1ª parte goles +1.5"])
+        self.assertLess(pred.probs["1ª parte goles +0.5"], pred.probs["Goles +0.5"] if "Goles +0.5" in pred.probs else 1)
+
+
 if __name__ == "__main__":
     unittest.main()

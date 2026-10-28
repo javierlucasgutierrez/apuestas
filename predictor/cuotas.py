@@ -35,7 +35,7 @@ def kelly(prob: float, cuota: float, fraccion: float = 0.25, tope: float = 0.03)
 def normalizar_mercado(texto: str) -> str:
     """'corners +9.5', 'Córners+9,5', 'goles -2.5', 'btts si'... → nombre interno."""
     t = texto.strip().lower().replace(" ", "").replace(",", ".").replace("ó", "o")
-    for prefijo, nombre in (("corners", "Córners"), ("corner", "Córners"), ("c", "Córners"),
+    for prefijo, nombre in (("1parte", "1ª parte goles"), ("1t", "1ª parte goles"), ("corners", "Córners"), ("corner", "Córners"), ("c", "Córners"),
                             ("goles", "Goles"), ("g", "Goles")):
         if t.startswith(prefijo) and len(t) > len(prefijo) and t[len(prefijo)] in "+-":
             signo, linea = t[len(prefijo)], float(t[len(prefijo) + 1:])
