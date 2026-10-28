@@ -497,6 +497,18 @@ def orden_picks(args) -> None:
     registro.cerrar()
 
 
+def peor_racha(resultados: list[float]) -> int:
+    """Máximo de resultados negativos seguidos (los nulos no cortan ni suman)."""
+    peor = actual = 0
+    for r in resultados:
+        if r < 0:
+            actual += 1
+            peor = max(peor, actual)
+        elif r > 0:
+            actual = 0
+    return peor
+
+
 def orden_informe(args) -> None:
     registro = Registro(BASE_DATOS)
     picks = registro.picks()
@@ -530,6 +542,16 @@ def orden_informe(args) -> None:
     print("\nPor mercado\n" + cabecera)
     for familia, r in sorted(por_familia.items()):
         print(fila(familia, r))
+    liquidados = [p for p in picks if p.unidades is not None]
+    semanas: dict = {}
+    for p in liquidados:
+        clave = p.fecha_partido.isocalendar()[:2]
+        semanas[clave] = semanas.get(clave, 0.0) + p.unidades
+    print("\nRachas")
+    print(f"  Peor racha de picks fallados seguidos: {peor_racha([p.unidades for p in liquidados])}")
+    print(f"  Semanas en positivo: {sum(v > 0 for v in semanas.values())} · en negativo: "
+          f"{sum(v < 0 for v in semanas.values())} · peor racha de semanas en negativo: "
+          f"{peor_racha([semanas[k] for k in sorted(semanas)])}")
     if total.picks < 300:
         print(f"\n⚠  Con {total.picks} picks el resultado aún puede ser suerte. El CLV es mejor indicador.")
 
