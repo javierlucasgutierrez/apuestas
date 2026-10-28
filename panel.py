@@ -260,7 +260,8 @@ _tarea = {"activa": False, "nombre": "", "log": [], "terminada": None}
 def lanzar_tarea(nombre: str) -> dict:
     if _tarea["activa"]:
         return {"ok": False, "mensaje": "Ya hay una tarea en marcha. Espera a que termine."}
-    orden = {"actualizar": ["actualizar"], "optimizar": ["optimizar"]}.get(nombre)
+    orden = {"actualizar": ["actualizar", "--ligas", *preferencias()["ligas"]],
+             "optimizar": ["optimizar"]}.get(nombre)
     if not orden:
         return {"ok": False, "mensaje": "Tarea desconocida."}
     _tarea.update(activa=True, nombre=nombre, log=[], terminada=None)
