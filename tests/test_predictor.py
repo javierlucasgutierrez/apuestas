@@ -276,5 +276,40 @@ class TestRegistro(unittest.TestCase):
         self.assertEqual(liquidar({"FTHG": "2", "FTAG": "1", "HC": "7", "AC": "4"}, "Córners -9.5", 1.9)[0], -1.0)
 
 
+class TestCuotasVivo(unittest.TestCase):
+    EVENTO = {
+        "id": "abc", "sport_key": "soccer_spain_la_liga", "commence_time": "2026-10-31T19:00:00Z",
+        "home_team": "Real Betis", "away_team": "Sevilla",
+        "bookmakers": [
+            {"key": "pinnacle", "title": "Pinnacle", "markets": [
+                {"key": "h2h", "outcomes": [{"name": "Real Betis", "price": 2.0}, {"name": "Sevilla", "price": 4.0},
+                                            {"name": "Draw", "price": 3.6}]},
+                {"key": "spreads", "outcomes": [{"name": "Real Betis", "price": 1.95, "point": -0.25},
+                                                {"name": "Sevilla", "price": 1.95, "point": 0.25}]},
+                {"key": "totals", "outcomes": [{"name": "Over", "price": 2.0, "point": 2.5},
+                                               {"name": "Under", "price": 1.9, "point": 2.5}]}]},
+            {"key": "unibet_eu", "title": "Unibet", "markets": [
+                {"key": "h2h", "outcomes": [{"name": "Real Betis", "price": 1.95}, {"name": "Sevilla", "price": 3.8},
+                                            {"name": "Draw", "price": 3.95}]},
+                {"key": "spreads", "outcomes": [{"name": "Real Betis", "price": 2.10, "point": -0.25},
+                                                {"name": "Sevilla", "price": 1.75, "point": 0.25}]}]},
+        ]}
+
+    def test_convierte_a_columnas_de_football_data(self):
+        from predictor.cuotas_vivo import evento_a_fila
+        f = evento_a_fila(self.EVENTO, "SP1")
+        self.assertEqual((f["Date"], f["Time"], f["HomeTeam"]), ("31/10/2026", "20:00", "Real Betis"))
+        self.assertEqual((f["PSH"], f["PSD"], f["P>2.5"], f["AHh"], f["PAHH"]), (2.0, 3.6, 2.0, -0.25, 1.95))
+        self.assertEqual((f["MaxD"], f["MaxAHH"]), (3.95, 2.10))  # Pinnacle no cuenta para la mejor cuota
+        self.assertNotIn("Max>2.5", f)
+
+    def test_detecta_valor_con_cuotas_en_vivo(self):
+        from predictor.cuotas_vivo import evento_a_fila
+        ops = {o.familia: o for o in oportunidades(evento_a_fila(self.EVENTO, "SP1"), ["Max"], umbral=0.02)}
+        self.assertEqual((ops["1X2"].mercado, ops["1X2"].cuota), ("X", 3.95))
+        self.assertEqual((ops["Hándicap asiático"].mercado, ops["Hándicap asiático"].cuota),
+                         ("Hándicap local -0.25", 2.10))
+
+
 if __name__ == "__main__":
     unittest.main()

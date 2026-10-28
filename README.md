@@ -297,6 +297,16 @@ python app.py valor --backtest --casas B365 BW   # solo con Bet365 y bwin
 
 ---
 
+## Cuotas en vivo (opcional, recomendado)
+
+Por defecto, las cuotas de los próximos partidos son las que football-data tomó al actualizar su archivo, que pueden tener horas o días. Con **The Odds API** el programa baja las cuotas **del momento** de muchas casas, incluidas Pinnacle y la bolsa de Betfair:
+
+1. Regístrate gratis en **the-odds-api.com** (plan gratuito: 500 créditos al mes). Te mandan una clave por email.
+2. Guárdala una vez: `python app.py configurar --clave-odds TU_CLAVE`
+3. Listo: `jornada.bat` bajará también las cuotas en vivo y el sistema las usará durante las 12 horas siguientes.
+
+Cada descarga de 20 ligas gasta unos 60 créditos, así que el plan gratuito da para unas 8 descargas al mes (2 por semana). Si quieres gastar menos, configura menos ligas. La clave se guarda solo en tu ordenador (`preferencias.json`) y no se sube a ningún sitio.
+
 ## De dónde salen los datos
 
 - **football-data.co.uk**, con descarga libre y gratuita: cada partido con goles, córners y cuotas de muchas casas (Pinnacle, bolsa de Betfair, Bet365, bwin...), más los próximos partidos.
@@ -326,3 +336,4 @@ python -m unittest discover -s tests
 - `predictor/cuotas.py`: cuota mínima, valor y Kelly.
 - `predictor/backtest.py` y `predictor/optimizar.py`: pruebas con el histórico y búsqueda de ajustes.
 - `predictor/descargar.py` y `predictor/datos.py`: descarga y lectura de datos.
+- `predictor/cuotas_vivo.py`: cuotas en vivo de The Odds API.

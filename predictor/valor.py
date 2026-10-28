@@ -44,7 +44,7 @@ def _columna(casa: str, mercado: str, sufijo: str) -> str:
 
 def _cuota(fila: dict, columna: str) -> float | None:
     try:
-        v = float((fila.get(columna) or "").replace(",", "."))
+        v = float(str(fila.get(columna) or "").replace(",", "."))
     except ValueError:
         return None
     return v if v > 1 else None

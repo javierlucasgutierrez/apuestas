@@ -21,6 +21,7 @@ from datetime import date, timedelta
 from predictor.backtest import backtest
 from predictor.cuotas import kelly, normalizar_mercado, seleccionar
 from predictor.datos import cara_a_cara, cargar_csv, cargar_varios, guardar_csv
+from predictor.cuotas_vivo import archivo_proximos, descargar_cuotas
 from predictor.descargar import GRANDES, LIGAS, TODAS, descargar
 from predictor.ejemplo import generar_liga
 from predictor.mercados import Ajustes, Predictor, familia
@@ -152,9 +153,23 @@ def leer_cuotas_manuales(ruta: str, equipos: list[str]) -> dict[tuple[str, str],
 
 
 # ------------------------------------------------------------------ órdenes
+def clave_odds() -> str | None:
+    """Clave de The Odds API: variable de entorno ODDS_API_KEY o la guardada con 'configurar'."""
+    return os.environ.get("ODDS_API_KEY") or leer_preferencias().get("clave_odds")
+
+
+def bajar_cuotas_vivo(ligas: list[str]) -> None:
+    clave = clave_odds()
+    if not clave:
+        return
+    codigos = [LIGAS[l][0] for l in (TODAS if "todas" in ligas else ligas)]
+    descargar_cuotas(clave, codigos, os.path.join(DESCARGAS, "proximos_vivo.csv"))
+
+
 def orden_descargar(args) -> None:
     print("Descargando de football-data.co.uk...")
     descargar(args.carpeta, TODAS if "todas" in args.ligas else args.ligas, args.temporadas)
+    bajar_cuotas_vivo(args.ligas)
     print(f"Listo. Datos en {os.path.relpath(args.carpeta)}")
 
 
@@ -425,6 +440,8 @@ def orden_configurar(args) -> None:
         json.dump(prefs, f, indent=2, ensure_ascii=False)
     print("Preferencias guardadas (se usan por defecto en todas las órdenes):")
     for k, v in prefs.items():
+        if k == "clave_odds":
+            v = "guardada (" + v[:4] + "…)"
         print(f"  {k}: {' '.join(v) if isinstance(v, list) else v}")
 
 
@@ -432,6 +449,7 @@ def orden_actualizar(args) -> None:
     ligas = args.ligas or GRANDES
     print("1) Descargando datos nuevos de football-data.co.uk...")
     descargar(DESCARGAS, TODAS if "todas" in ligas else ligas, args.temporadas)
+    bajar_cuotas_vivo(ligas)
     print("\n2) Liquidando picks pendientes...")
     registro = Registro(BASE_DATOS)
     liquidados = registro.liquidar(leer_filas([DESCARGAS]))
@@ -654,7 +672,7 @@ def main(argv=None) -> None:
     p = sub.add_parser("jornada", help="Analiza los próximos partidos y dice qué mirar en Oddspedia.")
     opciones_datos(p)
     opciones_seleccion(p)
-    p.add_argument("--proximos", default=os.path.join(DESCARGAS, "proximos.csv"))
+    p.add_argument("--proximos", help="CSV de próximos partidos (por defecto, el más reciente descargado).")
     p.add_argument("--cuotas", help="CSV con cuotas copiadas (columnas local, visitante, mercado, cuota).")
     p.add_argument("--dias", type=int, default=3, help="Partidos de los próximos N días (3).")
     p.add_argument("--desde", help="Fecha inicial AAAA-MM-DD (por defecto hoy).")
@@ -667,7 +685,7 @@ def main(argv=None) -> None:
     p = sub.add_parser("valor", help="Comparador de casas: dónde se paga más que el precio justo.")
     opciones_datos(p)
     opciones_seleccion(p)
-    p.add_argument("--proximos", default=os.path.join(DESCARGAS, "proximos.csv"))
+    p.add_argument("--proximos", help="CSV de próximos partidos (por defecto, el más reciente descargado).")
     p.add_argument("--dias", type=int, default=3, help="Partidos de los próximos N días (3).")
     p.add_argument("--desde", help="Fecha inicial AAAA-MM-DD (por defecto hoy).")
     p.add_argument("--liga", nargs="+", help="Solo estas ligas (laliga, premier... o SP1, E0...).")
@@ -683,7 +701,7 @@ def main(argv=None) -> None:
     p.add_argument("--kelly", type=float, default=0.25, help="Fracción de Kelly (0.25).")
     p.add_argument("--tope", type=float, default=0.03, help="Máximo del bank por apuesta (0.03).")
     p.add_argument("--plano", type=float, default=0.01, help="Con --metodo plano, parte del bank (0.01).")
-    p.add_argument("--proximos", default=os.path.join(DESCARGAS, "proximos.csv"))
+    p.add_argument("--proximos", help="CSV de próximos partidos (por defecto, el más reciente descargado).")
     p.add_argument("--dias", type=int, default=3, help="Partidos de los próximos N días (3).")
     p.add_argument("--desde", help="Fecha inicial AAAA-MM-DD (por defecto hoy).")
     p.add_argument("--liga", nargs="+", help="Solo estas ligas.")
@@ -701,6 +719,7 @@ def main(argv=None) -> None:
     p.add_argument("--tope", type=float)
     p.add_argument("--plano", type=float, help="Con método plano, parte del bank por apuesta (0.01 = 1 %%).")
     p.add_argument("--dias", type=int)
+    p.add_argument("--clave-odds", help="Tu clave de the-odds-api.com para cuotas en vivo.")
     p.set_defaults(func=orden_configurar)
 
     p = sub.add_parser("actualizar", help="Cada jornada: baja datos nuevos y liquida los picks jugados.")
@@ -751,6 +770,8 @@ def main(argv=None) -> None:
         subparser.set_defaults(**{k: v for k, v in prefs.items() if k in destinos})
 
     args = parser.parse_args(argv)
+    if hasattr(args, "proximos") and not args.proximos:
+        args.proximos = archivo_proximos(DESCARGAS)
     try:
         args.func(args)
     except (ValueError, KeyError, FileNotFoundError) as e:
