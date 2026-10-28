@@ -27,12 +27,13 @@ PERFILES = {
     "volumen": {"Hándicap asiático": (0.01, 5.0), "1X2": (0.02, 5.0)},
     # Cuotas de 1,60 a 2,10: menos apuestas, pero se gana la mitad y las rachas son más cortas.
     "cuotas_cortas": {"Hándicap asiático": (0.02, 2.10), "1X2": (0.02, 2.10)},
-    # Solo más/menos 2,5 goles (los córners van aparte, con el modelo). Margen pequeño:
-    # en las pruebas, alrededor de +2 % con CLV positivo pero poco.
+    # Solo "más de" goles (ver SOLO_MAS): +10 % en el backtest con cuotas de 1,50 a 2,50.
     # El asiático de goles solo llega con cuotas en vivo y aún no tiene backtest: se le exige más valor.
-    "goles": {"Goles 2.5": (0.01, 2.10), "Goles asiático": (0.02, 2.10)},
+    "goles": {"Goles 2.5": (0.01, 2.50), "Goles asiático": (0.02, 2.50)},
 }
-CUOTA_MIN_PERFIL = {"principal": 1.50, "cuotas_cortas": 1.60, "goles": 1.60}
+CUOTA_MIN_PERFIL = {"principal": 1.50, "cuotas_cortas": 1.60, "goles": 1.50}
+# Perfiles que solo apuestan "más de": el usuario no quiere "menos de" (y en goles salió mejor).
+SOLO_MAS = {"goles"}
 TEMPORADAS_ENTRENO = {"2324", "2425"}
 
 
@@ -52,6 +53,8 @@ def apuestas_del_sistema(filas: list[dict], perfil: str, casas: list[str],
         except ValueError:
             continue
         for o in ops:
+            if perfil in SOLO_MAS and "+" not in o.mercado:
+                continue
             if o.familia in reglas:
                 umbral, cuota_max = reglas[o.familia]
                 if o.valor >= umbral and o.cuota <= cuota_max:

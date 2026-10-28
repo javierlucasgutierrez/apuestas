@@ -127,8 +127,9 @@ def datos_picks(dias: int) -> dict:
 # Goles: "más de" 1,5 / 2,5 / 3,5 y 1ª parte (más/menos 0,5 y 1,5), con cuota mínima entre 1,60
 # y 2,10. Córners: las dos direcciones.
 MODELO = {
-    "goles": {"prefijo": ("Goles +", "1ª parte goles"), "cuota_min": 1.60, "cuota_max": 2.10, "prob_minima": 0.45},
-    "corners": {"prefijo": "Córners", "cuota_min": 1.50, "cuota_max": 2.60, "prob_minima": 0.55},
+    # Solo "más de": el usuario no apuesta nunca "menos de".
+    "goles": {"prefijo": ("Goles +", "1ª parte goles +"), "cuota_min": 1.50, "cuota_max": 2.50, "prob_minima": 0.42},
+    "corners": {"prefijo": "Córners +", "cuota_min": 1.50, "cuota_max": 2.60, "prob_minima": 0.40},
 }
 
 
@@ -234,9 +235,9 @@ def datos_modelo(dias: int, tipo: str) -> dict:
     return {"selecciones": lista[:30], "stake_sugerido": stake_sugerido}
 
 
-CALCULADORA = ["Goles +1.5", "Goles -1.5", "Goles +2.5", "Goles -2.5", "Goles +3.5", "Goles -3.5",
-               "1ª parte goles +0.5", "1ª parte goles -0.5", "1ª parte goles +1.5", "1ª parte goles -1.5"] + \
-              [f"Córners {s}{l}" for l in (7.5, 8.5, 9.5, 10.5, 11.5, 12.5) for s in "+-"]
+# Solo "más de" (el usuario no apuesta "menos de").
+CALCULADORA = ["Goles +1.5", "Goles +2.5", "Goles +3.5", "1ª parte goles +0.5", "1ª parte goles +1.5"] + \
+              [f"Córners +{l}" for l in (7.5, 8.5, 9.5, 10.5, 11.5, 12.5)]
 
 
 def lista_partidos(dias: int) -> dict:
