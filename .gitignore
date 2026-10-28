@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+/datos/descargas/
+/datos/mis_*
+/datos/ejemplo/
+/datos/*.db
+/datos/publicar/
+/preferencias.json
