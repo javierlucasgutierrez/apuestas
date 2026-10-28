@@ -158,7 +158,22 @@ Con el criterio de Kelly: cuanto más valor y más probabilidad, más se apuesta
 
 ## Resultados del backtest (comprobado con datos reales)
 
-### ⭐ La estrategia principal (la recomendada)
+### ⚽ Estrategia de goles (la que viene por defecto: solo goles y córners)
+
+**Más/menos 2,5 goles, cuotas de 1,60 a 2,10, solo cuando una casa paga al menos un 1 % más que el precio justo de Pinnacle o Betfair (método odds ratio).** Apuesta fija del 1 % del bank. 20 ligas.
+
+| Temporada | Apuestas | Rentabilidad |
+|---|---|---|
+| 2023/24 | 336 | +1,9 % |
+| 2024/25 | 244 | +2,7 % |
+| 2025/26 | 133 | +6,1 % |
+| 2026/27 (en curso) | 11 | −30,7 % |
+| **Total** | **724** | **+2,5 %** (CLV +1,7 %) |
+
+- Se gana el 55 % a una cuota media de 1,88. Positiva en cada temporada completa, pero **con margen pequeño**: en un año simulado, lo normal es +5 % y hay un 37 % de probabilidad de acabar el año perdiendo, porque salen pocas apuestas (unas 230 al año).
+- Los goles son el mercado que más vigilan las casas; por eso la ventaja es pequeña. Los córners (pestaña Córners) salen del modelo: sus probabilidades se cumplen, pero no hay cuotas históricas para comprobar si dan dinero.
+
+### ⭐ La estrategia de resultados (la más rentable, pero no es de goles)
 
 **Hándicap asiático y 1X2, cuotas de 1,50 a 2,50, solo cuando una casa paga al menos un 2 % más que el precio justo de Pinnacle o Betfair.** Apuesta fija del **1,5 % del bank**. 20 ligas.
 
