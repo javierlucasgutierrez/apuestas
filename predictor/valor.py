@@ -166,7 +166,7 @@ def oportunidad_handicap(fila: dict, casas: list[str], umbral: float, cuota_min:
             cuota = _cuota(fila, f"{casa}AH{lado}")
             if not cuota or not cuota_min <= cuota <= cuota_max:
                 continue
-            l = linea if i == 0 else -linea
+            l = (linea if i == 0 else -linea) + 0.0  # + 0.0 evita que salga "-0"
             equipo = "local" if i == 0 else "visitante"
             o = Oportunidad(_fecha(fila["Date"]), fila.get("Div", ""), fila["HomeTeam"], fila["AwayTeam"],
                             f"Hándicap {equipo} {l:+g}", casa, cuota, probs[i], "PS" if fila.get("PAHH") else "BFE",
