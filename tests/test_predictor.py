@@ -322,5 +322,40 @@ class TestCuotasVivo(unittest.TestCase):
                          ("Hándicap local -0.25", 2.10))
 
 
+class TestGolesAsiaticos(unittest.TestCase):
+    def test_como_se_paga(self):
+        from predictor.valor import beneficio_total_asiatico as b
+        # Más de 3: con 3 goles se devuelve, con 4 se gana, con 2 se pierde.
+        self.assertAlmostEqual(b(3, 3.0, True, 2.0), 0.0)
+        self.assertAlmostEqual(b(4, 3.0, True, 2.0), 1.0)
+        self.assertAlmostEqual(b(2, 3.0, True, 2.0), -1.0)
+        # Más de 2,75: con 3 goles, media ganada y media devuelta.
+        self.assertAlmostEqual(b(3, 2.75, True, 2.0), 0.5)
+        # Más de 2,25: con 2 goles, media perdida.
+        self.assertAlmostEqual(b(2, 2.25, True, 2.0), -0.5)
+        # Menos de 2,75: con 3 goles, media perdida; con 2, ganada.
+        self.assertAlmostEqual(b(3, 2.75, False, 1.9), -0.5)
+        self.assertAlmostEqual(b(2, 2.75, False, 1.9), 0.9)
+
+    def test_desde_cuotas_en_vivo(self):
+        from predictor.cuotas_vivo import evento_a_fila
+        from predictor.registro import descripcion
+        from predictor.valor import liquidar
+        evento = {"commence_time": "2026-10-31T19:00:00Z", "home_team": "A", "away_team": "B", "bookmakers": [
+            {"key": "pinnacle", "title": "Pinnacle", "markets": [
+                {"key": "totals", "outcomes": [{"name": "Over", "price": 1.95, "point": 2.75},
+                                               {"name": "Under", "price": 1.95, "point": 2.75}]}]},
+            {"key": "unibet_eu", "title": "Unibet", "markets": [
+                {"key": "totals", "outcomes": [{"name": "Over", "price": 2.08, "point": 2.75},
+                                               {"name": "Under", "price": 1.80, "point": 2.75},
+                                               {"name": "Over", "price": 1.70, "point": 2.5}]}]}]}
+        fila = evento_a_fila(evento, "SP1")
+        self.assertEqual((fila["TL"], fila["PTLO"], fila["MaxTLO"]), (2.75, 1.95, 2.08))
+        ops = [o for o in oportunidades(fila, ["Max"], umbral=0.02) if o.familia == "Goles asiático"]
+        self.assertEqual((len(ops), ops[0].mercado, ops[0].cuota), (1, "Goles asiático +2.75", 2.08))
+        self.assertEqual(descripcion(ops[0]), "Más de 2,75 goles (asiático)")
+        self.assertAlmostEqual(liquidar({"FTHG": "2", "FTAG": "1"}, ops[0].mercado, 2.08)[0], 0.54)
+
+
 if __name__ == "__main__":
     unittest.main()

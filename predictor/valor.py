@@ -231,6 +231,43 @@ def oportunidad_handicap(fila: dict, casas: list[str], umbral: float, cuota_min:
     return o
 
 
+def beneficio_total_asiatico(goles: int, linea: float, mas: bool, cuota: float) -> float:
+    """Beneficio por euro en goles asiáticos: más/menos de 2,25, 2,75, 3...
+
+    Con 3 goles: "más de 3" devuelve el dinero; "más de 2,75" gana la mitad y devuelve la otra.
+    """
+    return beneficio_handicap(goles if mas else -goles, -linea if mas else linea, cuota)
+
+
+def oportunidad_total_asiatico(fila: dict, casas: list[str], umbral: float, cuota_min: float,
+                               cuota_max: float) -> Oportunidad | None:
+    """Goles asiáticos en la línea principal (solo con cuotas en vivo: no hay histórico)."""
+    linea = _linea(fila.get("TL"))
+    if linea is None:
+        return None
+    probs = _justo_dos_lados(fila, ["PTL", "BFETL"], "O", "U")
+    if not probs:
+        return None
+    mejor = None
+    for i, lado in enumerate("OU"):
+        for casa in casas:
+            cuota = _cuota(fila, f"{casa}TL{lado}")
+            if not cuota or not cuota_min <= cuota <= cuota_max:
+                continue
+            o = Oportunidad(_fecha(fila["Date"]), fila.get("Div", ""), fila["HomeTeam"], fila["AwayTeam"],
+                            f"Goles asiático {'+' if i == 0 else '-'}{linea:g}", casa, cuota, probs[i],
+                            "PS" if fila.get("PTLO") else "BFE", familia="Goles asiático")
+            if o.valor >= umbral and (mejor is None or o.valor > mejor[1].valor):
+                mejor = (i, o)
+    if not mejor:
+        return None
+    i, o = mejor
+    if fila.get("FTHG") and fila.get("FTAG"):
+        o.beneficio = beneficio_total_asiatico(int(fila["FTHG"]) + int(fila["FTAG"]), linea, i == 0, o.cuota)
+        o.resultado = o.beneficio > 0
+    return o
+
+
 def oportunidades(fila: dict, casas: list[str], umbral: float = 0.02, cuota_min: float = 1.50,
                   cuota_max: float = 5.0, handicap: bool = True) -> list[Oportunidad]:
     """Selecciones en las que alguna casa paga al menos `umbral` por encima de lo justo.
@@ -266,6 +303,9 @@ def oportunidades(fila: dict, casas: list[str], umbral: float = 0.02, cuota_min:
         o = oportunidad_handicap(fila, casas, umbral, cuota_min, cuota_max)
         if o:
             resultado.append(o)
+    o = oportunidad_total_asiatico(fila, casas, umbral, cuota_min, cuota_max)
+    if o:
+        resultado.append(o)
     return resultado
 
 
@@ -353,6 +393,9 @@ def liquidar(fila: dict, mercado: str, cuota: float) -> tuple[float | None, floa
         cierre = precio_justo(fila, "1X2", cierre=True)
         if cierre:
             clv = cuota * cierre[0][i] - 1
+    elif mercado.startswith("Goles asiático "):
+        texto = mercado.split()[2]
+        beneficio = beneficio_total_asiatico(gl + gv, float(texto[1:]), texto.startswith("+"), cuota)
     elif mercado.startswith("Goles "):
         linea = float(mercado.split()[1][1:])
         mas = "+" in mercado

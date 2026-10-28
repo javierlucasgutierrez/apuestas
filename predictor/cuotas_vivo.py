@@ -69,6 +69,18 @@ def evento_a_fila(evento: dict, liga: str) -> dict:
     if linea is not None:
         fila["AHh"] = linea
 
+    # Línea principal de goles de Pinnacle (o Betfair). Si no es 2,5 es una línea asiática
+    # (2,25, 2,75, 3...) y se guarda en las columnas TL ("total line").
+    linea_goles = None
+    for ref in ("pinnacle", "betfair_ex_eu", "betfair_ex_uk"):
+        for casa in evento.get("bookmakers", []):
+            if casa["key"] == ref and linea_goles is None:
+                for mercado in casa.get("markets", []):
+                    if mercado["key"] == "totals" and mercado.get("outcomes"):
+                        linea_goles = float(mercado["outcomes"][0].get("point", 2.5))
+    if linea_goles is not None and linea_goles != 2.5:
+        fila["TL"] = linea_goles
+
     for casa in evento.get("bookmakers", []):
         referencia = casa["key"] in REFERENCIAS
         codigo = REFERENCIAS.get(casa["key"], casa.get("title", casa["key"]))
@@ -80,10 +92,13 @@ def evento_a_fila(evento: dict, liga: str) -> dict:
                     anotar(codigo, codigo + sufijo, float(o["price"]), referencia)
             elif mercado["key"] == "totals":
                 for o in salidas:
-                    if float(o.get("point", 0)) == 2.5:
+                    punto = float(o.get("point", 0))
+                    c = _columnas_goles(codigo)
+                    if punto == 2.5:
                         sufijo = ">2.5" if o["name"] == "Over" else "<2.5"
-                        c = _columnas_goles(codigo)
                         anotar(c, c + sufijo, float(o["price"]), referencia)
+                    elif punto == fila.get("TL"):
+                        anotar(c, c + ("TLO" if o["name"] == "Over" else "TLU"), float(o["price"]), referencia)
             elif mercado["key"] == "spreads" and linea is not None:
                 for o in salidas:
                     if o["name"] == local and float(o["point"]) == linea:
@@ -120,10 +135,15 @@ def descargar_cuotas(clave: str, ligas: list[str], destino: str, regiones: str =
         return 0
     columnas = sorted({k for f in filas for k in f}, key=lambda k: (k not in ("Div", "Date", "Time", "HomeTeam",
                                                                             "AwayTeam"), k))
-    with open(destino, "w", encoding="utf-8", newline="") as f:
-        escritor = csv.DictWriter(f, fieldnames=columnas)
-        escritor.writeheader()
-        escritor.writerows(filas)
+    # Además de usarse ahora, cada descarga se guarda: con el tiempo será nuestro propio
+    # histórico de cuotas (asiático de goles incluido) para poder hacer backtest.
+    historial = os.path.join(os.path.dirname(os.path.dirname(destino)), "historial_cuotas")
+    os.makedirs(historial, exist_ok=True)
+    for ruta in (destino, os.path.join(historial, f"vivo_{datetime.now():%Y%m%d_%H%M}.csv")):
+        with open(ruta, "w", encoding="utf-8", newline="") as f:
+            escritor = csv.DictWriter(f, fieldnames=columnas)
+            escritor.writeheader()
+            escritor.writerows(filas)
     aviso(f"  Cuotas en vivo: {len(filas)} partidos" + (f" · créditos restantes: {restantes}" if restantes else ""))
     return len(filas)
 

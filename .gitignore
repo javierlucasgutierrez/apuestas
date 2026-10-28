@@ -6,3 +6,4 @@ __pycache__/
 /datos/*.db
 /datos/publicar/
 /preferencias.json
+/datos/historial_cuotas/

@@ -29,7 +29,8 @@ PERFILES = {
     "cuotas_cortas": {"Hándicap asiático": (0.02, 2.10), "1X2": (0.02, 2.10)},
     # Solo más/menos 2,5 goles (los córners van aparte, con el modelo). Margen pequeño:
     # en las pruebas, alrededor de +2 % con CLV positivo pero poco.
-    "goles": {"Goles 2.5": (0.01, 2.10)},
+    # El asiático de goles solo llega con cuotas en vivo y aún no tiene backtest: se le exige más valor.
+    "goles": {"Goles 2.5": (0.01, 2.10), "Goles asiático": (0.02, 2.10)},
 }
 CUOTA_MIN_PERFIL = {"principal": 1.50, "cuotas_cortas": 1.60, "goles": 1.60}
 TEMPORADAS_ENTRENO = {"2324", "2425"}
