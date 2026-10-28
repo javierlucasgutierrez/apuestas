@@ -9,7 +9,7 @@ from .calibracion import aplicar
 from .datos import Partido, cara_a_cara
 from .modelo import ModeloFuerzas, buscar_equipo, poisson
 
-LINEAS_GOLES = [1.5, 2.5, 3.5]
+LINEAS_GOLES = [1.5, 2.5, 3.5, 4.5]
 LINEAS_CORNERS = [7.5, 8.5, 9.5, 10.5, 11.5, 12.5]
 LINEAS_1T = [0.5, 1.5]
 PRIMERA = "1ª parte goles"

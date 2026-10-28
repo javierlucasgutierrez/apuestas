@@ -173,7 +173,7 @@ Con el criterio de Kelly: cuanto más valor y más probabilidad, más se apuesta
 - Diseñada con 2023–2025 (+11,0 %) y comprobada con 2025–2027, que no había visto (+8,2 %, CLV +6,2 %). Se gana el 55–57 % a una cuota media de 2,0.
 - Solo «más de» funciona mucho mejor que «más y menos» (+2,5 %). Con umbrales del 2 % y del 3 % también sale positiva (+8,0 % y +10,6 %).
 - Unas 2–4 apuestas por semana. Un año simulado: normal +15 %, malo (1 de cada 20) −5 %, probabilidad de acabar el año perdiendo 13 %.
-- Pestañas Goles (más de 1,5 / 2,5 / 3,5 y 1ª parte) y Córners: también solo «más de». Salen del modelo: sus probabilidades se cumplen, pero no hay cuotas históricas para comprobar si dan dinero.
+- Pestañas Goles (más de 1,5 a 4,5 y 1ª parte) y Córners: también solo «más de», y **siempre hacia arriba**: en cada partido se propone la línea más alta que aún tiene probabilidad suficiente y una cuota mínima dentro del rango. Con cuotas de hasta 2,50, «más de 3,5» solo entra en partidos con muchos goles esperados (≈1 de cada 20) y «más de 4,5» nunca (como mucho un 27 %). Salen del modelo: sus probabilidades se cumplen, pero no hay cuotas históricas para comprobar si dan dinero.
 
 ### ⭐ La estrategia de resultados (la más rentable, pero no es de goles)
 
