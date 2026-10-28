@@ -7,8 +7,8 @@ sobre la probabilidad original (escalado de Platt):
     p_corregida = 1 / (1 + exp(-(a + b * logit(p))))
 
 con a = 0 y b = 1 si no hay nada que corregir. Se ajusta por grupo de mercados
-(goles, córners, ambos marcan) sobre el lado "más" / "sí"; el otro lado es el
-complementario. En 1X2 se corrigen la victoria local y la visitante por separado.
+(cada línea de goles y de córners, ambos marcan) sobre el lado "más" / "sí"; el otro
+lado es el complementario. En 1X2 se corrigen la victoria local y la visitante por separado.
 """
 
 import math
@@ -24,11 +24,15 @@ def _logit(p: float) -> float:
 
 
 def grupo_de(mercado: str) -> str | None:
+    """Grupo de calibración. Cada línea de goles y córners va por separado: el modelo no
+    se equivoca igual en "más de 1,5" que en "más de 3,5"."""
     if mercado in ("1", "2"):
         return "victoria_local" if mercado == "1" else "victoria_visitante"
-    for grupo, prefijo in GRUPOS.items():
-        if mercado.startswith(prefijo) and grupo not in ("victoria_local", "victoria_visitante"):
-            return grupo
+    if mercado.startswith(("Goles +", "Córners +")):
+        tipo, linea = mercado.split()
+        return f"{'goles' if tipo == 'Goles' else 'corners'} {linea[1:]}"
+    if mercado == "Ambos marcan: sí":
+        return "ambos"
     return None
 
 

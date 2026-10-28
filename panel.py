@@ -22,7 +22,7 @@ from predictor.descargar import GRANDES
 from predictor.mercados import Ajustes, Predictor
 from predictor.registro import Registro, descripcion, resumir, stake_10
 from predictor.sistema import PERFILES, apuestas_del_sistema, stake
-from predictor.valor import CASAS, Oportunidad, leer_filas
+from predictor.valor import CASAS, Oportunidad, leer_filas, precio_justo
 
 PUERTO = 8765
 PREFERENCIAS_POR_DEFECTO = {"bank": 50.0, "perfil": "cuotas_cortas", "metodo": "plano", "plano": 0.01,
@@ -122,11 +122,23 @@ def datos_picks(dias: int) -> dict:
     return {"picks": lista, "perfil": prefs["perfil"], "bank": prefs["bank"], "actualizado": ultima_actualizacion()}
 
 
-def datos_corners(dias: int) -> dict:
+# Qué se enseña en las pestañas de goles y córners (salen del modelo, no de comparar casas).
+# Goles: solo "más de" 1,5 / 2,5 / 3,5 y cuota mínima entre 1,60 y 2,10. Córners: las dos direcciones.
+MODELO = {
+    "goles": {"prefijo": "Goles +", "cuota_min": 1.60, "cuota_max": 2.10, "prob_minima": 0.50},
+    "corners": {"prefijo": "Córners", "cuota_min": 1.50, "cuota_max": 2.60, "prob_minima": 0.55},
+}
+
+
+def datos_modelo(dias: int, tipo: str) -> dict:
+    """Selecciones de goles o córners según el modelo, con su cuota mínima."""
+    reglas = MODELO[tipo]
     prefs = preferencias()
     hoy = date.today()
     modelo = predictor()
     proximos = cargar_csv(os.path.join(cli.DESCARGAS, "proximos.csv"))
+    # Precio justo del mercado en más/menos 2,5 (Pinnacle o Betfair), si viene en el archivo.
+    filas = {(f.get("Date"), f.get("HomeTeam")): f for f in leer_filas([archivo_proximos(cli.DESCARGAS)])}
     registro = Registro(cli.BASE_DATOS)
     lista = []
     for p in proximos:
@@ -136,22 +148,45 @@ def datos_corners(dias: int) -> dict:
             pred = modelo.predecir(p.local, p.visitante, fecha=p.fecha)
         except KeyError:
             continue
-        if pred.avisos or pred.corners_local is None:
+        if pred.avisos or (tipo == "corners" and pred.corners_local is None):
             continue
-        for s in seleccionar(pred.probs, None, cuota_min=1.50, umbral=0.05, prob_minima=0.55):
-            if not s.mercado.startswith("Córners") or s.cuota_minima > s.cuota_justa * 1.10:
+        for s in seleccionar(pred.probs, None, cuota_min=reglas["cuota_min"], umbral=0.05,
+                             prob_minima=reglas["prob_minima"]):
+            # Fuera si la cuota mínima no la va a pagar nadie (muy por encima de la justa) o se sale del rango.
+            if (not s.mercado.startswith(reglas["prefijo"]) or s.cuota_minima > s.cuota_justa * 1.10
+                    or s.cuota_minima > reglas["cuota_max"]):
                 continue
-            lista.append({
+            item = {
                 "fecha": p.fecha.isoformat(), "dia": dia(p.fecha), "liga": p.liga,
                 "nombre_liga": cli.NOMBRE_LIGA.get(p.liga, p.liga), "local": pred.local,
-                "visitante": pred.visitante, "mercado": s.mercado,
+                "visitante": pred.visitante, "mercado": s.mercado, "familia": "Córners" if tipo == "corners" else "Goles",
                 "descripcion": descripcion(Oportunidad(p.fecha, p.liga, pred.local, pred.visitante, s.mercado,
                                                        "", 0, 0, "")),
                 "prob": round(100 * s.prob), "cuota_justa": round(s.cuota_justa, 2),
                 "cuota_minima": round(s.cuota_minima, 2),
-                "esperados": round(pred.corners_local + pred.corners_visitante, 1),
+                "esperados": round(pred.corners_local + pred.corners_visitante, 1) if tipo == "corners"
+                else round(pred.goles_local + pred.goles_visitante, 1),
                 "guardado": ya_guardado(registro, p.fecha, pred.local, pred.visitante, s.mercado),
-            })
+                "mercado_justa": None, "mercado_mejor": None, "alcanzable": None,
+            }
+            fila = filas.get((p.fecha.strftime("%d/%m/%Y"), p.local))
+            if fila and s.mercado == "Goles +2.5":
+                justo = precio_justo(fila, "Goles 2.5")
+                mejor = fila.get("Max>2.5")
+                if justo:
+                    item["mercado_justa"] = round(1 / justo[0][0], 2)
+                if mejor:
+                    item["mercado_mejor"] = float(mejor)
+                    # "si": alguna casa paga la mínima y además supera el precio justo del mercado.
+                    # "dudoso": la paga, pero el mercado lo ve menos probable que el modelo (en el
+                    # backtest, apostar solo con el modelo contra el mercado perdía dinero).
+                    if item["mercado_mejor"] < item["cuota_minima"]:
+                        item["alcanzable"] = "no"
+                    elif item["mercado_justa"] and item["mercado_mejor"] < item["mercado_justa"] * 1.01:
+                        item["alcanzable"] = "dudoso"
+                    else:
+                        item["alcanzable"] = "si"
+            lista.append(item)
     registro.cerrar()
     # Una sola línea por partido: la más probable de las que pasan el filtro.
     mejores: dict = {}
@@ -160,9 +195,11 @@ def datos_corners(dias: int) -> dict:
         if clave not in mejores or c["guardado"] or (c["prob"] > mejores[clave]["prob"]
                                                      and not mejores[clave]["guardado"]):
             mejores[clave] = c
-    lista = sorted(mejores.values(), key=lambda x: -x["prob"])
+    # Primero las que alguna casa ya paga a la cuota mínima; al final, las que ninguna paga.
+    orden = {"si": 0, None: 1, "dudoso": 2, "no": 3}
+    lista = sorted(mejores.values(), key=lambda x: (orden[x["alcanzable"]], -x["prob"]))
     stake_sugerido = max(1, stake_10(prefs["plano"], prefs["tope"]) - 1)
-    return {"corners": lista[:30], "stake_sugerido": stake_sugerido}
+    return {"selecciones": lista[:30], "stake_sugerido": stake_sugerido}
 
 
 def datos_historial() -> dict:
@@ -209,7 +246,7 @@ def guardar_pick(d: dict) -> dict:
     else:
         pct = float(d.get("stake_pct") or prefs["plano"])
     registro = Registro(cli.BASE_DATOS)
-    nuevo = registro.guardar(o, pct, prefs["perfil"] if d.get("familia") != "Córners" else "manual", prefs["tope"])
+    nuevo = registro.guardar(o, pct, prefs["perfil"] if d.get("familia") not in ("Córners", "Goles") else "manual", prefs["tope"])
     registro.cerrar()
     return {"ok": True, "mensaje": "Guardado en tu historial." if nuevo else "Ya estaba guardado."}
 
@@ -314,8 +351,8 @@ class Manejador(BaseHTTPRequestHandler):
                 return self._responder({"error": "Primero pulsa «Actualizar datos» en Inicio."})
             if url.path == "/api/picks":
                 return self._responder(datos_picks(dias))
-            if url.path == "/api/corners":
-                return self._responder(datos_corners(dias))
+            if url.path in ("/api/corners", "/api/goles"):
+                return self._responder(datos_modelo(dias, url.path.rsplit("/", 1)[1]))
             if url.path == "/api/historial":
                 return self._responder(datos_historial())
             self._responder({"error": "No encontrado"}, codigo=404)

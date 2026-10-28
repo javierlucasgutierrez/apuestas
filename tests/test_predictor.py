@@ -156,7 +156,7 @@ class TestCalibracion(unittest.TestCase):
         # El "modelo" dice 70 % pero solo pasa el 55 % de las veces.
         pares = [(0.70, i % 20 < 11) for i in range(2000)] + [(0.30, i % 20 < 9) for i in range(2000)]
         a, b = ajustar_platt(pares, suavizado=0.0)
-        corregidas = aplicar({"Córners +9.5": 0.70, "Córners -9.5": 0.30}, {"corners": [a, b]})
+        corregidas = aplicar({"Córners +9.5": 0.70, "Córners -9.5": 0.30}, {"corners 9.5": [a, b]})
         self.assertAlmostEqual(corregidas["Córners +9.5"], 0.55, places=2)
         self.assertAlmostEqual(corregidas["Córners -9.5"], 0.45, places=2)
 
@@ -166,6 +166,17 @@ class TestCalibracion(unittest.TestCase):
         self.assertAlmostEqual(c["1"] + c["X"] + c["2"], 1.0)
         self.assertAlmostEqual(c["1X"], c["1"] + c["X"])
         self.assertGreater(c["1"], 0.60)
+
+    def test_cada_linea_tiene_su_grupo(self):
+        from predictor.calibracion import grupo_de
+        self.assertEqual(grupo_de("Goles +3.5"), "goles 3.5")
+        self.assertEqual(grupo_de("Córners +9.5"), "corners 9.5")
+        self.assertIsNone(grupo_de("Goles -3.5"))  # el lado "menos" es el complementario
+        c = aplicar({"Goles +1.5": 0.7, "Goles -1.5": 0.3, "Goles +3.5": 0.4, "Goles -3.5": 0.6},
+                    {"goles 3.5": [-0.3, 1.0]})
+        self.assertEqual(c["Goles +1.5"], 0.7)
+        self.assertLess(c["Goles +3.5"], 0.4)
+        self.assertAlmostEqual(c["Goles +3.5"] + c["Goles -3.5"], 1.0)
 
     def test_sin_calibrador_no_cambia(self):
         probs = {"1": 0.5, "Goles +2.5": 0.6, "Goles -2.5": 0.4}

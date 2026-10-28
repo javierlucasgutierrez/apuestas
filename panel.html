@@ -76,6 +76,7 @@
   <nav>
     <button data-p="inicio" class="activa">🏠 Inicio</button>
     <button data-p="picks">🎯 Picks</button>
+    <button data-p="goles">⚽ Goles</button>
     <button data-p="corners">🚩 Córners</button>
     <button data-p="historial">📊 Mi historial</button>
     <button data-p="config">⚙️ Configuración</button>
@@ -125,6 +126,18 @@
     <p class="ayuda">Ya está copiado: pégalo donde publiques tus picks. También se ha guardado en la carpeta <i>datos/publicar</i>.</p>
     <textarea id="publicar-texto" readonly></textarea>
   </div>
+</section>
+
+<!-- GOLES -->
+<section id="goles">
+  <h2>⚽ Goles: más de 1,5 · 2,5 · 3,5</h2>
+  <div class="aviso">Salen de nuestro modelo estadístico, con cuotas entre 1,60 y 2,10. Sus probabilidades se cumplen (comprobado con 15.000 partidos), pero en goles las casas afinan mucho: <b>apuesta poco y solo si la cuota llega a la mínima</b>. En «más de 2,5» verás también el precio justo del mercado: si los dos coinciden, mejor.</div>
+  <div class="fila" style="margin-bottom:14px">
+    <label style="margin:0">Mostrar los próximos
+      <select id="goles-dias"><option value="1">1 día</option><option value="2">2 días</option><option value="3" selected>3 días</option><option value="7">7 días</option></select>
+    </label>
+  </div>
+  <div id="goles-lista"></div>
 </section>
 
 <!-- CÓRNERS -->
@@ -235,7 +248,7 @@ async function api(ruta, datos) {
 function ir(nombre) {
   document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("activa", b.dataset.p === nombre));
   document.querySelectorAll("section").forEach((s) => s.classList.toggle("activa", s.id === nombre));
-  ({inicio: cargarInicio, picks: cargarPicks, corners: cargarCorners, historial: cargarHistorial, config: cargarConfig})[nombre]?.();
+  ({inicio: cargarInicio, picks: cargarPicks, goles: () => cargarGoles(), corners: () => cargarCorners(), historial: cargarHistorial, config: cargarConfig})[nombre]?.();
   window.scrollTo(0, 0);
 }
 document.querySelectorAll("nav button").forEach((b) => b.onclick = () => ir(b.dataset.p));
@@ -327,44 +340,55 @@ $("#btn-publicar").onclick = async () => {
   try { await navigator.clipboard.writeText(r.texto); } catch (e) { $("#publicar-texto").select(); }
 };
 
-// ---------- CÓRNERS
-async function cargarCorners() {
-  const caja = $("#corners-lista");
-  caja.innerHTML = '<div class="vacio">Calculando córners (la primera vez tarda unos segundos)...</div>';
-  const d = await api("/api/corners?dias=" + $("#corners-dias").value);
+// ---------- GOLES Y CÓRNERS (salen del modelo)
+const _modelo = {};
+async function cargarModelo(tipo) {
+  const caja = $("#" + tipo + "-lista");
+  caja.innerHTML = '<div class="vacio">Calculando (la primera vez tarda unos segundos)...</div>';
+  const d = await api(`/api/${tipo}?dias=` + $("#" + tipo + "-dias").value);
   if (d.error) { caja.innerHTML = `<div class="vacio">${esc(d.error)}</div>`; return; }
-  if (!d.corners.length) { caja.innerHTML = '<div class="tarjeta vacio">No hay córners interesantes en esas fechas. Prueba con más días o actualiza los datos.</div>'; return; }
-  caja.innerHTML = d.corners.map((c, i) => `
+  if (!d.selecciones.length) { caja.innerHTML = '<div class="tarjeta vacio">Nada interesante en esas fechas. Prueba con más días o actualiza los datos.</div>'; return; }
+  const unidad = tipo === "goles" ? "goles" : "córners";
+  caja.innerHTML = d.selecciones.map((c, i) => `
     <div class="tarjeta pick">
       <div class="partido">${esc(c.local)} – ${esc(c.visitante)}</div>
-      <div class="meta">${esc(c.dia)} · ${esc(c.nombre_liga)} · ${String(c.esperados).replace(".", ",")} córners esperados</div>
+      <div class="meta">${esc(c.dia)} · ${esc(c.nombre_liga)} · ${String(c.esperados).replace(".", ",")} ${unidad} esperados</div>
       <div class="apuesta">➡️ <b>${esc(c.descripcion)}</b> <span class="etiqueta e-amarillo">${c.prob} %</span></div>
       <div class="datos">
         <div class="clave"><b>${coma(c.cuota_minima)}</b><span>Cuota mínima</span></div>
-        <div><b>${coma(c.cuota_justa)}</b><span>Cuota justa</span></div>
+        <div><b>${coma(c.cuota_justa)}</b><span>Cuota justa (modelo)</span></div>
+        ${c.mercado_justa ? `<div><b>${coma(c.mercado_justa)}</b><span>Cuota justa (mercado)</span></div>` : ""}
+        ${c.mercado_mejor ? `<div><b>${coma(c.mercado_mejor)}</b><span>Mejor cuota vista</span></div>` : ""}
       </div>
+      ${c.alcanzable === "si" ? '<div style="margin-bottom:8px"><span class="etiqueta e-verde">✅ Modelo y mercado de acuerdo, y hay casas que pagan la mínima</span></div>' : ""}
+      ${c.alcanzable === "dudoso" ? '<div style="margin-bottom:8px"><span class="etiqueta e-amarillo">⚠️ Se paga la mínima, pero el mercado lo ve menos probable que el modelo: dudoso</span></div>' : ""}
+      ${c.alcanzable === "no" ? '<div style="margin-bottom:8px"><span class="etiqueta e-rojo">❌ Ahora mismo ninguna casa paga la mínima: no se apuesta</span></div>' : ""}
+      ${c.alcanzable === null ? '<div style="margin-bottom:8px"><span class="etiqueta e-azul">🔎 Mira en Oddspedia si alguna casa paga la mínima</span></div>' : ""}
       ${c.guardado ? '<span class="etiqueta e-verde">✅ Guardado en tu historial</span>' : `
       <div class="fila">
         <span>Si la apuestas: cuota</span>
-        <input class="pequeno" id="cc-${i}" placeholder="${coma(c.cuota_minima)}" inputmode="decimal">
-        <input class="pequeno" id="ck-${i}" placeholder="Casa" style="width:120px">
+        <input class="pequeno" id="${tipo}-c-${i}" placeholder="${coma(c.cuota_minima)}" inputmode="decimal">
+        <input class="pequeno" id="${tipo}-k-${i}" placeholder="Casa" style="width:120px">
         <span>stake</span>
-        <select id="cs-${i}">${[1,2,3,4,5].map((s) => `<option ${s === d.stake_sugerido ? "selected" : ""}>${s}</option>`).join("")}</select>
-        <button class="boton" onclick="guardarCorner(${i})">✅ Guardar</button>
+        <select id="${tipo}-s-${i}">${[1,2,3,4,5].map((s) => `<option ${s === d.stake_sugerido ? "selected" : ""}>${s}</option>`).join("")}</select>
+        <button class="boton" onclick="guardarModelo('${tipo}', ${i})">✅ Guardar</button>
       </div>`}
     </div>`).join("");
-  window._corners = d.corners;
+  _modelo[tipo] = d.selecciones;
 }
+const cargarGoles = () => cargarModelo("goles");
+const cargarCorners = () => cargarModelo("corners");
+$("#goles-dias").onchange = cargarGoles;
 $("#corners-dias").onchange = cargarCorners;
 
-async function guardarCorner(i) {
-  const c = window._corners[i];
-  const cuota = parseFloat(($("#cc-" + i).value || "").replace(",", "."));
+async function guardarModelo(tipo, i) {
+  const c = _modelo[tipo][i];
+  const cuota = parseFloat(($(`#${tipo}-c-${i}`).value || "").replace(",", "."));
   if (!(cuota > 1)) { alert("Escribe la cuota que has conseguido, por ejemplo 1,85"); return; }
   if (cuota < c.cuota_minima && !confirm(`Esa cuota está por debajo de la mínima (${coma(c.cuota_minima)}). ¿Guardarla igualmente?`)) return;
-  const r = await api("/api/guardar", {...c, familia: "Córners", cuota, casa: $("#ck-" + i).value || "manual", stake: $("#cs-" + i).value});
+  const r = await api("/api/guardar", {...c, cuota, casa: $(`#${tipo}-k-${i}`).value || "manual", stake: $(`#${tipo}-s-${i}`).value});
   alert(r.mensaje);
-  cargarCorners();
+  cargarModelo(tipo);
 }
 
 // ---------- HISTORIAL
