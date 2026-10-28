@@ -17,14 +17,15 @@ import sys
 from dataclasses import replace
 from datetime import date, timedelta
 
-from predictor.backtest import backtest, cuotas_del_partido
-from predictor.cuotas import normalizar_mercado, seleccionar
+from predictor.backtest import backtest
+from predictor.cuotas import kelly, normalizar_mercado, seleccionar
 from predictor.datos import cara_a_cara, cargar_csv, cargar_varios, guardar_csv
 from predictor.descargar import GRANDES, LIGAS, descargar
 from predictor.ejemplo import generar_liga
 from predictor.mercados import Ajustes, Predictor, familia
 from predictor.modelo import buscar_equipo
 from predictor.optimizar import optimizar
+from predictor.valor import CASAS, backtest_valor, leer_filas, oportunidades, probabilidad_consenso
 
 CARPETA = os.path.dirname(os.path.abspath(__file__))
 DESCARGAS = os.path.join(CARPETA, "datos", "descargas")
@@ -52,6 +53,11 @@ def opciones_seleccion(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--prob-minima", type=float, default=0.55,
                         help="Solo selecciones con al menos esta probabilidad (0.55).")
     parser.add_argument("--bank", type=float, default=100.0, help="Tu bank en euros (100).")
+    parser.add_argument("--umbral-mercado", type=float, default=0.02,
+                        help="Valor mínimo frente al precio justo del mercado (0.02 = 2%%).")
+    parser.add_argument("--cuota-max", type=float, default=5.0, help="Cuota máxima en valor de mercado (5).")
+    parser.add_argument("--casas", nargs="+", default=list(CASAS), metavar="CASA",
+                        help=f"Casas a comparar: {' '.join(CASAS)} (por defecto todas).")
 
 
 def leer_ajustes(args) -> Ajustes:
@@ -69,7 +75,8 @@ def preparar(args, hasta: date | None = None):
 
 
 # ------------------------------------------------------------------ salida
-def mostrar_partido(pred, predictor, args, cuotas: dict[str, float], detalle: bool = True):
+def mostrar_partido(pred, predictor, args, cuotas: dict[str, float], detalle: bool = True,
+                    solo_corners: bool = False):
     """Imprime el análisis y devuelve las selecciones."""
     liga = NOMBRE_LIGA.get(pred.liga, pred.liga)
     print(f"\n{pred.local} vs {pred.visitante}   [{liga}]")
@@ -96,6 +103,8 @@ def mostrar_partido(pred, predictor, args, cuotas: dict[str, float], detalle: bo
     # de la justa (más del ~73 %): ninguna casa las va a pagar a ese precio.
     selecciones = [s for s in seleccionar(pred.probs, cuotas, args.cuota_min, args.umbral, args.prob_minima)
                    if s.cuota is not None or s.cuota_minima <= s.cuota_justa * 1.10]
+    if solo_corners:
+        selecciones = [s for s in selecciones if s.mercado.startswith("Córners") or s.cuota is not None]
     if not selecciones:
         print("Ninguna selección llega a la probabilidad mínima.")
         return []
@@ -154,16 +163,57 @@ def orden_equipos(args) -> None:
             print(f"{i:>2}  {t:<22}{gf:>8.2f}{gc:>8.2f}{dif:>+6.2f}   {corners}")
 
 
+def contrario(mercado: str) -> str | None:
+    if "+" in mercado:
+        return mercado.replace("+", "-")
+    if mercado.startswith(("Goles -", "Córners -")):
+        return mercado.replace("-", "+")
+    return {"Ambos marcan: sí": "Ambos marcan: no", "Ambos marcan: no": "Ambos marcan: sí"}.get(mercado)
+
+
+def mostrar_comparador(pred, listas: dict[str, list[float]], args) -> None:
+    """Con las cuotas de varias casas: precio justo del mercado + opinión del modelo."""
+    print(f"\nCOMPARANDO CASAS (valor de mercado ≥ {pct(args.umbral_mercado)} y modelo de acuerdo)")
+    print(f"{'Selección':<17}{'Mejor':>6}{'Casas':>6}{'Justa mercado':>14}{'Justa modelo':>13}   Decisión")
+    for mercado, cuotas in listas.items():
+        mejor = max(cuotas)
+        p_modelo = pred.probs.get(mercado)
+        p_mercado = probabilidad_consenso(cuotas, listas.get(contrario(mercado))) if len(cuotas) >= 2 else None
+        if p_modelo is None:
+            continue
+        valor_modelo = mejor * p_modelo - 1
+        justa_mercado = f"{1 / p_mercado:.2f}" if p_mercado else "-"
+        if mejor < args.cuota_min:
+            decision = f"no: cuota < {args.cuota_min:.2f}"
+        elif p_mercado is None:
+            decision = ("solo modelo: " + ("vale" if mejor * p_modelo >= 1 + args.umbral else "no llega")
+                        + " (pon más casas para comparar)")
+        else:
+            valor_mercado = mejor * p_mercado - 1
+            if valor_mercado >= args.umbral_mercado and valor_modelo >= 0:
+                p = (p_mercado + p_modelo) / 2
+                decision = (f"APOSTAR {args.bank * kelly(p, mejor):.2f} € (valor mercado {100 * valor_mercado:+.0f}%,"
+                            f" modelo {100 * valor_modelo:+.0f}%)")
+            elif valor_mercado >= args.umbral_mercado:
+                decision = f"dudoso: el mercado da valor ({100 * valor_mercado:+.0f}%) pero el modelo no"
+            else:
+                decision = f"no: la mejor cuota no supera lo justo del mercado ({100 * valor_mercado:+.0f}%)"
+        print(f"{mercado:<17}{mejor:>6.2f}{len(cuotas):>6}{justa_mercado:>14}{1 / p_modelo:>13.2f}   {decision}")
+
+
 def orden_partido(args) -> None:
     _, predictor = preparar(args)
-    cuotas = {}
+    listas: dict[str, list[float]] = {}
     for texto in args.cuota or []:
-        mercado, _, valor = texto.partition("=")
-        if not valor:
+        mercado, _, valores = texto.partition("=")
+        if not valores:
             sys.exit(f"Error: escribe la cuota como mercado=cuota, por ejemplo corners+9.5=1.80 (recibido {texto!r})")
-        cuotas[normalizar_mercado(mercado)] = float(valor.replace(",", "."))
+        listas[normalizar_mercado(mercado)] = [float(v.replace(",", ".")) for v in valores.split("/") if v.strip()]
     pred = predictor.predecir(args.local, args.visitante)
-    mostrar_partido(pred, predictor, args, cuotas)
+    # Con una sola cuota decide el modelo; con varias casas decide el comparador.
+    mostrar_partido(pred, predictor, args, {m: c[0] for m, c in listas.items() if len(c) == 1})
+    if listas:
+        mostrar_comparador(pred, listas, args)
 
 
 def orden_jornada(args) -> None:
@@ -179,6 +229,8 @@ def orden_jornada(args) -> None:
     _, predictor = preparar(args)
     manuales = leer_cuotas_manuales(args.cuotas, predictor.equipos) if args.cuotas else {}
 
+    # Las cuotas de 1X2 y goles del archivo no se comparan con el modelo: el backtest dice que
+    # ahí la casa sabe más. Se usan en la sección de valor de mercado (comparando casas).
     apostar, mirar = [], []
     for p in proximos:
         try:
@@ -186,9 +238,9 @@ def orden_jornada(args) -> None:
         except KeyError as e:
             print(f"\n{p.local} vs {p.visitante}: {e.args[0]}")
             continue
-        cuotas = cuotas_del_partido(p) | manuales.get((pred.local, pred.visitante), {})
+        cuotas = manuales.get((pred.local, pred.visitante), {})
         print(f"\n{p.fecha:%a %d/%m}", end="")
-        for s in mostrar_partido(pred, predictor, args, cuotas, detalle=False):
+        for s in mostrar_partido(pred, predictor, args, cuotas, detalle=False, solo_corners=not args.todos):
             if pred.avisos:
                 continue
             if s.recomendada:
@@ -197,18 +249,77 @@ def orden_jornada(args) -> None:
                 mirar.append((p, s))
 
     print("\n" + "=" * 66)
-    print(f"APUESTAS CON VALOR (cuota conocida ≥ {args.cuota_min:.2f} y ≥ cuota mínima)")
+    print("1) VALOR DE MERCADO: una casa paga más que el precio justo (1X2 y goles 2,5)")
     print("=" * 66)
-    if not apostar:
-        print("Ninguna con las cuotas conocidas. No apostar también es una decisión correcta.")
-    for p, s in sorted(apostar, key=lambda x: -x[1].valor):
-        print(f"{p.fecha:%d/%m}  {p.local} - {p.visitante}: {s.mercado} @ {s.cuota:.2f} "
-              f"({pct(s.prob)}, valor {100 * s.valor:+.0f}%) → {args.bank * s.stake:.2f} €")
-    print(f"\nPARA MIRAR EN ODDSPEDIA (apuesta solo si encuentras la cuota mínima o más)")
+    filas = [f for f in leer_filas([args.proximos]) if not f.get("FTHG")]
+    mostrar_valor_mercado(filas, predictor, args, hoy)
+
+    if apostar:
+        print("\nCON TUS CUOTAS (archivo --cuotas)")
+        for p, s in sorted(apostar, key=lambda x: -x[1].valor):
+            print(f"{p.fecha:%d/%m}  {p.local} - {p.visitante}: {s.mercado} @ {s.cuota:.2f} "
+                  f"({pct(s.prob)}, valor {100 * s.valor:+.0f}%) → {args.bank * s.stake:.2f} €")
+    tipo = "SELECCIONES" if args.todos else "CÓRNERS"
+    print(f"\n2) {tipo} PARA MIRAR EN ODDSPEDIA (apuesta solo si encuentras la cuota mínima o más)")
     print("-" * 66)
     for p, s in sorted(mirar, key=lambda x: -x[1].prob)[:args.top]:
         print(f"{p.fecha:%d/%m}  {p.local} - {p.visitante}: {s.mercado:<16} {pct(s.prob):>4}  "
               f"cuota mínima {s.cuota_minima:.2f}")
+
+
+def mostrar_valor_mercado(filas: list[dict], predictor, args, hoy: date) -> None:
+    """Oportunidades de los próximos partidos según el precio justo de Pinnacle o Betfair."""
+    codigos = {LIGAS[l][0] if l in LIGAS else l for l in (args.liga or [])}
+    encontradas = []
+    for fila in filas:
+        try:
+            ops = oportunidades(fila, args.casas, args.umbral_mercado, args.cuota_min, args.cuota_max)
+        except ValueError:
+            continue
+        for o in ops:
+            if not hoy <= o.fecha <= hoy + timedelta(days=args.dias) or (codigos and o.liga not in codigos):
+                continue
+            try:
+                p_modelo = predictor.predecir(o.local, o.visitante).probs.get(o.mercado)
+            except KeyError:
+                p_modelo = None
+            encontradas.append((o, p_modelo))
+    if not encontradas:
+        print("Ninguna ahora mismo. No apostar también es una decisión correcta.")
+        return
+    for o, p_modelo in sorted(encontradas, key=lambda x: -x[0].valor):
+        modelo = "sin datos"
+        if p_modelo is not None:
+            modelo = "de acuerdo ✔" if o.cuota * p_modelo >= 1 else "en contra"
+        stake = args.bank * kelly(o.prob_justa, o.cuota)
+        print(f"{o.fecha:%d/%m}  {o.local} - {o.visitante}: {o.mercado} en {CASAS.get(o.casa, o.casa)} "
+              f"@ {o.cuota:.2f} (justa {o.cuota_justa:.2f}, valor {100 * o.valor:+.1f}%) "
+              f"→ {stake:.2f} € · modelo {modelo}")
+    print("Cuotas tomadas cuando se actualizó football-data: compruébalas en Oddspedia antes de apostar.")
+
+
+def orden_valor(args) -> None:
+    if args.backtest:
+        filas = leer_filas(args.datos)
+        print(f"Valor de mercado en el histórico: apostar cuando {', '.join(CASAS.get(c, c) for c in args.casas)}"
+              f" paga ≥ {pct(args.umbral_mercado)} más que el precio justo (Pinnacle o Betfair),")
+        print(f"con cuotas entre {args.cuota_min:.2f} y {args.cuota_max:.2f}. Apuesta fija de 1 €.\n")
+        inf = backtest_valor(filas, args.casas, args.umbral_mercado, args.cuota_min, args.cuota_max)
+        print(f"{'Mercado':<11}{'Temporada':<11}{'Apuestas':>9}{'Aciertos':>10}{'Cuota media':>12}"
+              f"{'Beneficio':>11}{'Yield':>8}{'CLV':>8}")
+        for (familia, temporada), r in sorted(inf.por_temporada.items()):
+            print(f"{familia:<11}{temporada:<11}{r.n:>9}{100 * r.aciertos / r.n:>9.0f}%{r.suma_cuotas / r.n:>12.2f}"
+                  f"{r.beneficio:>+10.1f}€{r.yield_pct:>+7.1f}%{r.clv_pct:>+7.1f}%")
+        for familia, r in sorted(inf.total.items()):
+            print(f"{familia:<11}{'TOTAL':<11}{r.n:>9}{100 * r.aciertos / r.n:>9.0f}%{r.suma_cuotas / r.n:>12.2f}"
+                  f"{r.beneficio:>+10.1f}€{r.yield_pct:>+7.1f}%{r.clv_pct:>+7.1f}%")
+        print("\nCLV: cuánto mejor que el precio justo final (justo antes del partido) era la cuota cogida.")
+        print("Positivo y estable = valor real a largo plazo, aunque el beneficio de una temporada dependa de la suerte.")
+        return
+    hoy = date.today() if not args.desde else date.fromisoformat(args.desde)
+    _, predictor = preparar(args)
+    filas = [f for f in leer_filas([args.proximos]) if not f.get("FTHG")]
+    mostrar_valor_mercado(filas, predictor, args, hoy)
 
 
 def orden_backtest(args) -> None:
@@ -302,7 +413,8 @@ def main(argv=None) -> None:
     p.add_argument("--local", required=True)
     p.add_argument("--visitante", required=True)
     p.add_argument("--cuota", nargs="+", metavar="MERCADO=CUOTA",
-                   help='Cuotas que ves en Oddspedia, p. ej. "corners+9.5=1.80" "goles-2.5=1.70" "1=2.10".')
+                   help='Cuotas que ves en Oddspedia, p. ej. "corners+9.5=1.80" "goles-2.5=1.70". '
+                        'Con varias casas, sepáralas con /: "corners+9.5=1.80/1.85/2.05" "corners-9.5=1.95/1.90/1.75".')
     p.set_defaults(func=orden_partido)
 
     p = sub.add_parser("jornada", help="Analiza los próximos partidos y dice qué mirar en Oddspedia.")
@@ -314,7 +426,19 @@ def main(argv=None) -> None:
     p.add_argument("--desde", help="Fecha inicial AAAA-MM-DD (por defecto hoy).")
     p.add_argument("--liga", nargs="+", help="Solo estas ligas (laliga, premier... o SP1, E0...).")
     p.add_argument("--top", type=int, default=20, help="Cuántas selecciones listar para mirar (20).")
+    p.add_argument("--todos", action="store_true",
+                   help="Mostrar también goles y 1X2 del modelo (por defecto solo córners).")
     p.set_defaults(func=orden_jornada)
+
+    p = sub.add_parser("valor", help="Comparador de casas: dónde se paga más que el precio justo.")
+    opciones_datos(p)
+    opciones_seleccion(p)
+    p.add_argument("--proximos", default=os.path.join(DESCARGAS, "proximos.csv"))
+    p.add_argument("--dias", type=int, default=3, help="Partidos de los próximos N días (3).")
+    p.add_argument("--desde", help="Fecha inicial AAAA-MM-DD (por defecto hoy).")
+    p.add_argument("--liga", nargs="+", help="Solo estas ligas (laliga, premier... o SP1, E0...).")
+    p.add_argument("--backtest", action="store_true", help="Probar la estrategia con el histórico.")
+    p.set_defaults(func=orden_valor)
 
     p = sub.add_parser("backtest", help="¿Se cumplen las probabilidades? ¿Habría ganado dinero?")
     opciones_datos(p)

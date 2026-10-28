@@ -1,142 +1,181 @@
 # 📊 Predictor de goles y córners (grandes ligas)
 
-Herramienta que calcula, solo con estadística, la probabilidad de cada mercado de un partido (**córners, goles, 1X2**) y te dice **la cuota mínima** que tienes que encontrar en la casa de apuestas (por ejemplo, en Oddspedia) para que la apuesta tenga valor.
+Herramienta para buscar **apuestas con valor a largo plazo** en las 5 grandes ligas. Combina dos cosas:
 
-Es independiente del resto del repositorio (la app K9 Club). Solo necesita **Python 3.10 o superior**, sin instalar nada más.
+1. **Comparar casas de apuestas** (1X2 y más/menos 2,5 goles): avisa cuando una casa paga más de lo que vale el resultado.
+2. **Estadística propia** (sobre todo córners): calcula la probabilidad de cada línea y te dice la **cuota mínima** que tienes que encontrar en Oddspedia.
 
-## Lo importante antes de empezar
+Es independiente del resto del repositorio (la app K9 Club). Solo necesita **Python 3.10 o superior**.
 
-- **La regla de la cuota 1,50.** A cuota 1,50, dos aciertos (+0,50 +0,50) cubren un fallo (−1). Eso quiere decir que **hay que acertar 2 de cada 3 (66,7 %) solo para no perder**. A cuota 1,80 basta con acertar el 55,6 %. La herramienta no busca "acertar mucho": busca apuestas donde **la probabilidad real sea mayor que la que paga la cuota**. Eso es lo único que da dinero a la larga.
-- **Ningún modelo adivina.** Da probabilidades: si dice 70 %, falla 3 de cada 10.
-- **En 1X2 y goles, la casa sabe más que el modelo** (ver resultados del backtest más abajo). Donde más sentido tiene es en **córners**, un mercado en el que las casas suelen afinar menos. Aun así, no hay cuotas históricas gratuitas de córners, así que ahí no se puede demostrar que se gane dinero; sí se puede comprobar que **las probabilidades se cumplen**.
-- Si ganas de forma constante, las casas suelen **limitar la cuenta**.
-- Apuesta solo dinero que puedas permitirte perder. Si deja de ser un extra controlado: **jugarbien.es** · teléfono gratuito 900 200 225.
+---
 
-## De dónde salen los datos
+## Explicado fácil
 
-- **football-data.co.uk**: resultados, **córners** y cuotas (1X2 y más/menos 2,5 goles) de cada partido de las 5 grandes ligas desde hace años, más los próximos partidos con sus cuotas. Son descargas gratuitas pensadas para esto, y la herramienta las baja sola.
-- **SoccerStats**: tiene los mismos datos, pero solo como medias por equipo, no partido a partido. Además bloquea el acceso automático, así que la herramienta no lo lee. Úsalo para echar un ojo y contrastar.
-- **Oddspedia**: también bloquea el acceso automático. Allí miras tú las cuotas de córners y las comparas con la cuota mínima que te da la herramienta. Si quieres que haga las cuentas con esas cuotas, se las pasas (ver más abajo).
+### ¿Qué es "valor"?
 
-## Cómo funciona
+Imagina una moneda: sale cara la mitad de las veces. Si alguien te paga **2,20 €** por cada euro que apuestas a cara, a la larga ganas, aunque pierdas muchas tiradas. Si te paga 1,80 €, a la larga pierdes, aunque aciertes muchas.
 
-1. **Fuerza de cada equipo, por separado para goles y para córners**: cuánto genera (a favor) y cuánto concede (en contra), teniendo en cuenta el rival y si juega en casa.
-2. **Más peso a lo reciente.** Cuánto pasado usar no lo he decidido a ojo: lo ha decidido la orden `optimizar`, que prueba muchas combinaciones contra 2 temporadas de partidos y se queda con la que **mejor predijo**. Ahora mismo es una vida media de **1 año** para goles y para córners (un partido de hace un año cuenta la mitad), y además los equipos con pocos partidos se acercan bastante a la media de la liga.
-3. **Probabilidades**:
-   - Goles: distribución de Poisson con la corrección de Dixon-Coles para 0-0, 1-0, 0-1 y 1-1.
-   - Córners: una binomial negativa, porque los córners varían más de un partido a otro que los goles.
-4. **Corrección con la experiencia (calibración).** La herramienta revisa los aciertos y fallos pasados del modelo y corrige las probabilidades. Por ejemplo, ha aprendido que el modelo apenas sabe predecir "ambos marcan", así que esas probabilidades se quedan cerca de la media y casi nunca salen como selección.
-5. **Cuota mínima** = la mayor de dos: **1,50** (tu regla) o la cuota que deja al menos un **5 % de valor** según el modelo.
+- **Cuota justa** = 1 ÷ probabilidad. Moneda: 1 ÷ 0,5 = **2,00**.
+- **Hay valor** cuando la cuota que te pagan es **mayor que la justa**.
+- **Valor** = probabilidad × cuota − 1. Con la moneda a 2,20: 0,5 × 2,20 − 1 = **+10 %**. De media ganas 10 céntimos por cada euro apostado.
 
-## Paso a paso
+Lo importante: **ganar no es acertar mucho, es apostar cuando la cuota paga más de lo que debería.**
 
-Abre una terminal dentro de la carpeta `apuestas`.
+### Tu regla de la cuota 1,50
 
-### 1. Descargar los datos (cada vez que vayas a apostar: se actualizan cada semana)
+A 1,50, dos aciertos (+0,50 +0,50) cubren un fallo (−1). Es decir, hay que acertar **2 de cada 3** (66,7 %) solo para quedarse igual. La herramienta respeta tu mínimo de 1,50, pero además exige que la cuota tenga valor.
 
-```
-python app.py descargar
-```
+### ¿De dónde sale la probabilidad "real"?
 
-Baja 4 temporadas de Premier, LaLiga, Serie A, Bundesliga y Ligue 1, y los próximos partidos. Para otras ligas: `--ligas premier laliga championship eredivisie portugal`.
+De dos sitios:
 
-### 2. Ver los próximos partidos
+**a) Del propio mercado (para 1X2 y goles 2,5).** Hay casas muy "finas": **Pinnacle** y la **bolsa de Betfair**. Ahí apuestan profesionales y sus cuotas, quitándoles el margen, son la mejor estimación que existe de la probabilidad real. Las casas normales (Bet365, bwin...) a veces se quedan atrás y pagan de más. Esa es la oportunidad.
 
-```
-python app.py jornada
-```
+> Ejemplo: Betfair dice que el empate vale 3,60 (28 %). Una casa lo paga a 3,90. Valor = 0,28 × 3,90 − 1 = **+9 %**.
 
-Para cada partido de los próximos 3 días (`--dias 7` para una semana, `--liga laliga` para una sola liga) muestra los goles y córners esperados y las selecciones más probables, con su **cuota mínima**:
+Así lo propone el estudio *Beating the bookies with their own numbers* (Kaunitz, Zhong y Kreiner, 2017).
 
-```
-Milan vs Bologna   [Serie A (Italia)]
-Esperado: goles 1.43-0.98 · córners 5.6-4.1 (total 9.7)
-Selección            Prob.  Justa  Mínima  Cuota
-Córners -10.5          66%   1.52    1.59      -   busca cuota ≥ 1.59
-Goles -2.5             58%   1.72    1.81   2.00   APOSTAR 2.53 € (valor +10%)
-```
+**b) De nuestro modelo estadístico (para córners, donde no hay casa "fina").** Se calcula en 4 pasos:
 
-- **Justa**: la cuota que correspondería a esa probabilidad, sin margen.
-- **Mínima**: por debajo de esta, no apuestes.
-- **Cuota**: si se conoce (1X2 y ±2,5 goles vienen en los datos), te dice directamente si llega y cuánto apostar (Kelly fraccionado, máximo 3 % del bank; cambia el bank con `--bank 300`).
+1. **Fuerza de cada equipo.** Cuánto genera y cuánto concede, comparado con la media de su liga, teniendo en cuenta el rival y si juega en casa. Por ejemplo: "el Barça saca un 45 % más de córners que la media; el Getafe concede un 20 % más".
+2. **Córners esperados del partido** = media de la liga × ventaja de casa × ataque × defensa del rival. Por ejemplo: 5,8 del local + 4,1 del visitante = 9,9.
+3. **Probabilidad de cada línea**, por ejemplo "más de 9,5". Los córners varían bastante de un partido a otro, así que se usa una fórmula (la binomial negativa) que tiene en cuenta esa variación. La herramienta la mide con los datos.
+4. **Corrección con la experiencia.** La herramienta repasa lo que predijo en el pasado y lo que pasó de verdad. Si se pasaba de optimista, se corrige sola.
 
-Al final hay dos resúmenes: **apuestas con valor** (cuota conocida y suficiente) y **para mirar en Oddspedia** (las más probables con su cuota mínima).
+Los partidos recientes pesan más: uno de hace 1 año cuenta la mitad. No lo he decidido a ojo: la orden `optimizar` probó 60 combinaciones y eligió la que mejor predijo.
 
-### 3. Comprobar en Oddspedia y decidir
+Para los goles se usa lo mismo con la distribución de Poisson y la corrección de Dixon y Coles (1997), que es el modelo clásico de la estadística del fútbol.
 
-Si en Oddspedia ves *Milan–Bologna, más de 9,5 córners a 1,85*:
+### ¿Cómo sé si algo tiene valor sin esperar años? El CLV
 
-```
-python app.py partido --local Milan --visitante Bologna --cuota "corners+9.5=1.85"
-```
+Las cuotas cambian hasta el inicio del partido. La cuota justo antes de empezar (la de **cierre**) es la más precisa, porque ya incluye alineaciones, lesiones y el dinero de los profesionales.
 
-Puedes poner varias: `--cuota "corners+9.5=1.85" "goles-2.5=2.00" "1=1.70"`. Mercados válidos: `1`, `X`, `2`, `1X`, `X2`, `12`, `goles+2.5`, `goles-1.5`, `corners+8.5`, `corners-11.5`, `ambos si`, `ambos no`.
+**CLV** = cuánto mejor era tu cuota que el precio justo de cierre. Si de media coges cuotas mejores que el cierre (**CLV positivo**), ganas a la larga, aunque una mala racha diga lo contrario. Es lo que miran los apostadores profesionales, porque la suerte casi no le afecta.
 
-Si tienes muchas, cópialas en un CSV como `datos/cuotas_plantilla.csv` y pásalo a la jornada:
+### ¿Cuánto apostar?
 
-```
-python app.py jornada --cuotas datos/mis_cuotas.csv
-```
+Con el criterio de Kelly: cuanto más valor y más probabilidad, más se apuesta. Se usa **una cuarta parte** de lo que dice Kelly y **nunca más del 3 % del bank** por apuesta. Así una mala racha no te hunde.
 
-### 4. Ver cómo está cada equipo
+---
 
-```
-python app.py equipos --liga SP1
-```
+## Resultados del backtest (comprobado con datos reales)
 
-Goles y córners a favor y en contra por partido, contra un rival medio. Los códigos de liga son E0, SP1, I1, D1 y F1.
+"Backtest" = repetir el pasado como si fuera en directo: en cada partido solo se usa lo que se sabía antes de jugarse.
 
-### 5. Una vez al mes: reoptimizar
+### 1. Comparando casas (1X2 y goles 2,5): sí da valor
 
-```
-python app.py optimizar
-```
+Regla: apostar cuando la mejor cuota del mercado paga **≥ 2 % más que el precio justo** de Pinnacle o Betfair, con cuotas entre 1,50 y 5. Apuesta fija de 1 €. Datos: 5 grandes ligas, agosto 2023 – octubre 2026.
 
-Vuelve a buscar los mejores ajustes y la corrección con los datos nuevos, y los guarda en `ajustes.json`. Tarda unos minutos.
+| Mercado | Temporada | Apuestas | Aciertos | Cuota media | Beneficio | Rentabilidad | CLV |
+|---|---|---|---|---|---|---|---|
+| 1X2 | 2023/24 | 396 | 30 % | 3,72 | +31,0 € | +7,8 % | +3,1 % |
+| 1X2 | 2024/25 | 378 | 29 % | 3,73 | +17,9 € | +4,7 % | +3,5 % |
+| 1X2 | 2025/26 | 101 | 32 % | 3,61 | +4,0 € | +4,0 % | +6,0 % |
+| 1X2 | 2026/27 (en curso) | 28 | 50 % | 3,23 | +20,2 € | +72 % | +19 % |
+| **1X2** | **TOTAL** | **903** | **30 %** | **3,70** | **+73,2 €** | **+8,1 %** | **+4,1 %** |
+| Goles 2,5 | TOTAL | 179 | 36 % | 2,79 | −8,9 € | −4,9 % | +7,2 % |
 
-### 6. Backtest: ¿se cumplen las probabilidades? ¿habría ganado dinero?
+Cómo leerlo:
 
-```
-python app.py backtest
-```
+- **1X2: positivo en todas las temporadas**, con CLV positivo. Es la señal más sólida.
+- **Goles 2,5**: CLV muy positivo, pero pocas apuestas, así que el beneficio todavía depende de la suerte (una temporada +15 %, otra −17 %).
+- **Ojo, se acierta poco (30 %)**: son sobre todo empates y no favoritos a cuota alta. Habrá **rachas de 10 o más fallos seguidos** y hay que aguantarlas. Si solo usas cuotas entre 1,50 y 2,50 hay muy pocas oportunidades (unas 60 en 3 años).
+- **"Mejor cuota del mercado"** es la más alta entre decenas de casas, y algunas no operan en España. Solo con Bet365 y bwin salen unas 75 apuestas en 3 años (1X2: +6,5 %, CLV +0,9 %). **Cuantas más cuentas tengas en casas españolas, más oportunidades.** Oddspedia te enseña todas a la vez.
 
-Recorre el pasado como si fuera en directo: para cada partido el modelo solo sabe lo anterior a esa fecha.
+### 2. Nuestro modelo solo, contra las casas (1X2 y goles): no da valor
 
-## Resultados del backtest (3.700 partidos, agosto 2024 – octubre 2026)
+Si se apuesta solo porque el modelo ve valor frente a Bet365, se pierde un 5–7 % y el CLV es negativo (−1,6 % / −2,6 %). En 1X2 y goles **la casa sabe más que las estadísticas**. Por eso la herramienta ya **no** recomienda 1X2 ni goles basándose solo en el modelo.
 
-**¿Se cumplen las probabilidades?** Sí, bastante bien. Ejemplo con córners:
+En cambio, cuando el mercado da valor **y el modelo está de acuerdo**, el CLV es algo mejor (goles: +11 % frente a +6 %). Por eso se muestra si el modelo está "de acuerdo ✔" o "en contra".
 
-| El modelo dice | Pasó de verdad | Cuota para no perder |
+### 3. Córners: las probabilidades se cumplen
+
+| El modelo dice | Pasó de verdad | Cuota necesaria para no perder |
 |---|---|---|
 | 55–60 % | 58 % | 1,72 |
 | 60–65 % | 62 % | 1,60 |
 | 65–70 % | 68 % | 1,46 |
 | 70–75 % | 72 % | 1,39 |
 
-Es decir: si te quedas con las selecciones de córners del **60–70 %** y solo apuestas cuando encuentras **cuota ≥ 1,50–1,60**, en el pasado se habría acertado más de lo necesario para no perder (en el tramo de 65–70 %, por ejemplo, basta una cuota de 1,46). **Pero no hay cuotas históricas de córners para comprobar si las casas pagaban esas cuotas.** Lleva tu propio registro de las apuestas (fecha, mercado, cuota, resultado) para comprobarlo con dinero real y poco a poco.
+(3.700 partidos, agosto 2024 – octubre 2026.) Cuando dice 68 %, pasa el 68 %. **Pero no existen cuotas históricas gratuitas de córners**, así que no se puede comprobar si las casas pagaban esas cuotas. Para córners, la regla es:
 
-**¿Habría ganado dinero en 1X2 y ±2,5 goles con las cuotas reales de Bet365?** **No.** Siguiendo las reglas (cuota ≥ 1,50, valor ≥ 5 %), se pierde en torno a un **10 %** de lo apostado (unas 1.300 apuestas, con un 47 % de aciertos a cuota media de 1,94). Cuando el modelo y la casa no están de acuerdo, suele tener razón la casa: tiene información que las estadísticas no tienen (lesiones, rotaciones, motivación...). Por eso, en esos mercados, toma las "apuestas con valor" con mucha cautela.
+- **Una sola casa**: apuesta solo si su cuota llega a la **cuota mínima** del modelo.
+- **Varias casas** (lo mejor): la herramienta calcula el precio justo **del mercado** a partir de todas, y solo dice APOSTAR si la mejor cuota supera ese precio en un 2 % **y** el modelo está de acuerdo.
 
-## Usar tus propios datos
+**Lleva un registro de cada apuesta** (fecha, mercado, cuota, resultado) para comprobar con tu dinero, poco a poco, si funciona.
 
-Acepta los CSV de football-data.co.uk tal cual o un CSV propio (separado por comas o por punto y coma) con estas columnas:
+### Lo que no puede saber
 
-| Columna | Obligatoria | Ejemplo |
-|---|---|---|
-| `liga` | recomendable | `SP1` |
-| `fecha` | sí | `15/08/2025` o `2025-08-15` |
-| `local`, `visitante` | sí | `Betis`, `Elche` |
-| `goles_local`, `goles_visitante` | en el histórico | `2`, `1` |
-| `corners_local`, `corners_visitante` | para córners | `7`, `3` |
-| `cuota_1`, `cuota_x`, `cuota_2`, `cuota_mas25`, `cuota_menos25` | opcional | `1.80` |
+Lesiones, alineaciones, rotaciones, el tiempo o la motivación. Por eso la cuota de cierre es tan buena: las casas sí lo saben. Las cuotas del archivo de próximos partidos se toman cuando se actualiza football-data, así que **compruébalas siempre en Oddspedia antes de apostar**.
+
+---
+
+## Paso a paso
+
+Abre una terminal dentro de la carpeta `apuestas`.
+
+### 1. Descargar los datos (antes de cada jornada)
 
 ```
-python app.py jornada --datos datos/mis_datos.csv --proximos datos/mis_proximos.csv
+python app.py descargar
 ```
 
-Los archivos que empiecen por `mis_` no se suben al repositorio. Los nombres de los equipos tienen que escribirse igual en todos los archivos.
+### 2. Ver la jornada
 
-Para probar sin conexión hay una liga inventada: `python app.py ejemplo`.
+```
+python app.py jornada
+```
+
+Te enseña dos listas:
+
+1. **VALOR DE MERCADO**: "Partido X: empate en Bet365 @ 3,90 (justa 3,60, valor +8 %) → 1,20 € · modelo de acuerdo ✔".
+2. **CÓRNERS PARA MIRAR EN ODDSPEDIA**: "Milan - Bologna: córners −10,5 · 70 % · cuota mínima 1,50".
+
+Opciones: `--dias 7`, `--liga laliga`, `--bank 300`, y `--todos` para ver también goles y 1X2 del modelo.
+
+### 3. Comprobar en Oddspedia y decidir
+
+Copia las cuotas de varias casas, separadas por `/`, con el "más" y el "menos" de la misma línea:
+
+```
+python app.py partido --local Milan --visitante Bologna --cuota "corners+9.5=1.80/1.85/2.05/1.83" "corners-9.5=1.95/1.90/1.72/1.93"
+```
+
+```
+Selección         Mejor Casas Justa mercado Justa modelo   Decisión
+Córners +9.5       2.05     4          2.00         2.77   dudoso: el mercado da valor (+2%) pero el modelo no
+Córners -9.5       1.95     4          2.00         1.56   no: la mejor cuota no supera lo justo del mercado (-2%)
+```
+
+Con una sola cuota (`"corners-10.5=1.62"`) decide el modelo y te dice si llega a la cuota mínima.
+
+Mercados válidos: `1`, `X`, `2`, `1X`, `X2`, `12`, `goles+2.5`, `goles-1.5`, `corners+8.5`, `corners-11.5`, `ambos si`, `ambos no`.
+
+### 4. Solo el comparador de casas
+
+```
+python app.py valor              # próximos partidos
+python app.py valor --backtest   # la tabla de resultados de arriba
+python app.py valor --backtest --casas B365 BW   # solo con Bet365 y bwin
+```
+
+### 5. Otras órdenes
+
+- `python app.py equipos --liga SP1`: goles y córners a favor y en contra de cada equipo. Ligas: E0, SP1, I1, D1, F1.
+- `python app.py backtest`: comprueba si se cumplen las probabilidades del modelo.
+- `python app.py optimizar`: una vez al mes. Recalcula los ajustes y la corrección con los datos nuevos (tarda unos minutos).
+- `python app.py ejemplo`: liga inventada para probar sin conexión.
+
+---
+
+## De dónde salen los datos
+
+- **football-data.co.uk**, con descarga libre y gratuita: cada partido con goles, córners y cuotas de muchas casas (Pinnacle, bolsa de Betfair, Bet365, bwin...), más los próximos partidos.
+- **SoccerStats, AdamChoi y Oddspedia** no permiten la lectura automática, así que la herramienta no los lee. Úsalos tú para mirar y contrastar. Oddspedia es el sitio donde comparar las cuotas de córners de las distintas casas.
+
+## Juego responsable
+
+Apuesta solo lo que puedas permitirte perder. Incluso con valor real hay rachas largas de pérdidas, y si ganas de forma constante, algunas casas limitan la cuenta. Si deja de ser un extra controlado: **jugarbien.es** · teléfono gratuito 900 200 225.
 
 ## Pruebas
 
@@ -146,12 +185,12 @@ python -m unittest discover -s tests
 
 ## Archivos
 
-- `app.py`: la aplicación (`descargar`, `jornada`, `partido`, `equipos`, `backtest`, `optimizar`, `ejemplo`).
-- `ajustes.json`: ajustes y corrección que ha calculado `optimizar`.
-- `predictor/descargar.py`: descarga de football-data.co.uk.
-- `predictor/datos.py`: lectura de los CSV y estadísticas cara a cara.
+- `app.py`: la aplicación.
+- `ajustes.json`: ajustes y corrección calculados por `optimizar`.
+- `predictor/valor.py`: comparador de casas, precio justo y CLV.
 - `predictor/modelo.py`: fuerzas de ataque y defensa, Poisson / Dixon-Coles y binomial negativa.
 - `predictor/mercados.py`: probabilidad de cada mercado.
-- `predictor/calibracion.py`: corrección con los aciertos y fallos pasados.
+- `predictor/calibracion.py`: corrección con la experiencia.
 - `predictor/cuotas.py`: cuota mínima, valor y Kelly.
-- `predictor/backtest.py` y `predictor/optimizar.py`: prueba histórica y búsqueda de ajustes.
+- `predictor/backtest.py` y `predictor/optimizar.py`: pruebas con el histórico y búsqueda de ajustes.
+- `predictor/descargar.py` y `predictor/datos.py`: descarga y lectura de datos.

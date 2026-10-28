@@ -14,6 +14,7 @@ from predictor.descargar import codigo_temporada, temporada_actual
 from predictor.ejemplo import generar_liga
 from predictor.mercados import Predictor, acierta
 from predictor.modelo import binomial_negativa
+from predictor.valor import backtest_valor, oportunidades, precio_justo, probabilidad_consenso
 
 
 def csv_temporal(contenido: str) -> list[Partido]:
@@ -168,6 +169,40 @@ class TestCalibracion(unittest.TestCase):
     def test_sin_calibrador_no_cambia(self):
         probs = {"1": 0.5, "Goles +2.5": 0.6, "Goles -2.5": 0.4}
         self.assertEqual(aplicar(probs, {}), probs)
+
+
+class TestValorMercado(unittest.TestCase):
+    FILA = {"Div": "SP1", "Date": "01/09/2025", "HomeTeam": "Betis", "AwayTeam": "Elche",
+            "FTHG": "0", "FTAG": "0", "_archivo": "SP1_2526.csv",
+            # Pinnacle: casi sin margen. Bet365 paga de más en el empate.
+            "PSH": "1.90", "PSD": "3.60", "PSA": "4.60", "B365H": "1.85", "B365D": "3.90", "B365A": "4.40",
+            "PSCH": "1.95", "PSCD": "3.40", "PSCA": "4.60"}
+
+    def test_precio_justo(self):
+        probs, ref = precio_justo(self.FILA, "1X2")
+        self.assertEqual(ref, "PS")
+        self.assertAlmostEqual(sum(probs), 1.0)
+
+    def test_detecta_la_cuota_que_paga_de_mas(self):
+        ops = oportunidades(self.FILA, ["B365"], umbral=0.02)
+        self.assertEqual(len(ops), 1)
+        o = ops[0]
+        self.assertEqual((o.mercado, o.casa, o.cuota, o.resultado), ("X", "B365", 3.90, True))
+        self.assertGreater(o.valor, 0.02)
+        self.assertGreater(o.clv, 0)  # la cuota de cierre del empate bajó: se cogió mejor precio
+
+    def test_sin_valor_no_hay_oportunidad(self):
+        self.assertEqual(oportunidades(self.FILA, ["B365"], umbral=0.20), [])
+
+    def test_backtest_valor(self):
+        inf = backtest_valor([self.FILA], ["B365"])
+        self.assertEqual(inf.total["1X2"].n, 1)
+        self.assertAlmostEqual(inf.total["1X2"].beneficio, 2.90)
+
+    def test_consenso(self):
+        # Dos casas con 1.90 / 1.90: justo 50 %.
+        self.assertAlmostEqual(probabilidad_consenso([1.90, 1.90], [1.90, 1.90]), 0.5)
+        self.assertLess(probabilidad_consenso([2.0]), 0.5)
 
 
 if __name__ == "__main__":
