@@ -20,6 +20,8 @@ from .valor import Oportunidad, oportunidades
 
 # perfil -> mercado -> (valor mínimo, cuota máxima)
 PERFILES = {
+    # La estrategia principal: la más sólida del backtest (positiva en cada temporada completa).
+    "principal": {"Hándicap asiático": (0.02, 2.50), "1X2": (0.02, 2.50)},
     "conservador": {"Hándicap asiático": (0.03, 5.0), "1X2": (0.03, 5.0)},
     "equilibrado": {"Hándicap asiático": (0.02, 5.0), "1X2": (0.02, 5.0)},
     "volumen": {"Hándicap asiático": (0.01, 5.0), "1X2": (0.02, 5.0)},
@@ -29,7 +31,7 @@ PERFILES = {
     # en las pruebas, alrededor de +2 % con CLV positivo pero poco.
     "goles": {"Goles 2.5": (0.01, 2.10)},
 }
-CUOTA_MIN_PERFIL = {"cuotas_cortas": 1.60, "goles": 1.60}
+CUOTA_MIN_PERFIL = {"principal": 1.50, "cuotas_cortas": 1.60, "goles": 1.60}
 TEMPORADAS_ENTRENO = {"2324", "2425"}
 
 

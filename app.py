@@ -695,8 +695,8 @@ def main(argv=None) -> None:
     p = sub.add_parser("sistema", help="El sistema completo: qué apostar hoy y cuánto (o su backtest).")
     opciones_datos(p)
     opciones_seleccion(p)
-    p.add_argument("--perfil", choices=list(PERFILES), default="equilibrado",
-                   help="conservador, equilibrado (por defecto) o volumen.")
+    p.add_argument("--perfil", choices=list(PERFILES), default="principal",
+                   help="principal (por defecto), equilibrado, conservador, volumen, cuotas_cortas o goles.")
     p.add_argument("--metodo", choices=["kelly", "plano"], default="kelly", help="Cómo calcular el importe.")
     p.add_argument("--kelly", type=float, default=0.25, help="Fracción de Kelly (0.25).")
     p.add_argument("--tope", type=float, default=0.03, help="Máximo del bank por apuesta (0.03).")

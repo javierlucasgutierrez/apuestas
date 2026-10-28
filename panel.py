@@ -25,7 +25,7 @@ from predictor.sistema import PERFILES, apuestas_del_sistema, stake
 from predictor.valor import CASAS, Oportunidad, leer_filas, precio_justo
 
 PUERTO = 8765
-PREFERENCIAS_POR_DEFECTO = {"bank": 50.0, "perfil": "cuotas_cortas", "metodo": "plano", "plano": 0.01,
+PREFERENCIAS_POR_DEFECTO = {"bank": 50.0, "perfil": "principal", "metodo": "plano", "plano": 0.01,
                             "kelly": 0.25, "tope": 0.03, "ligas": ["todas"], "casas": ["Max"], "dias": 3}
 
 
@@ -275,7 +275,7 @@ def guardar_config(d: dict) -> dict:
     prefs = cli.leer_preferencias()
     try:
         prefs["bank"] = round(float(str(d["bank"]).replace(",", ".")), 2)
-        prefs["perfil"] = d["perfil"] if d["perfil"] in PERFILES else "cuotas_cortas"
+        prefs["perfil"] = d["perfil"] if d["perfil"] in PERFILES else "principal"
         prefs["metodo"] = "kelly" if d["metodo"] == "kelly" else "plano"
         prefs["plano"] = min(max(float(str(d["plano"]).replace(",", ".")) / 100, 0.002), 0.03)
         prefs["ligas"] = ["todas"] if d["ligas"] == "todas" else GRANDES

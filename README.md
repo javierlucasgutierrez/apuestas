@@ -158,6 +158,27 @@ Con el criterio de Kelly: cuanto más valor y más probabilidad, más se apuesta
 
 ## Resultados del backtest (comprobado con datos reales)
 
+### ⭐ La estrategia principal (la recomendada)
+
+**Hándicap asiático y 1X2, cuotas de 1,50 a 2,50, solo cuando una casa paga al menos un 2 % más que el precio justo de Pinnacle o Betfair.** Apuesta fija del 1 % del bank. 20 ligas.
+
+| Temporada | Apuestas | Rentabilidad |
+|---|---|---|
+| 2023/24 | 342 | +14,8 % |
+| 2024/25 | 196 | +10,0 % |
+| 2025/26 | 215 | +15,7 % |
+| 2026/27 (en curso) | 23 | −10,2 % |
+| **Total** | **776** | **+13,1 %** (CLV +3,0 %) |
+
+- Diseñada con 2023–2025 (+12,0 %) y comprobada con 2025–2027, que no había visto (**+12,7 %**, CLV +3,8 %).
+- Se gana algo más de la mitad (52–53 %) a una cuota media de 2,04. Peor racha: 7 fallos seguidos.
+- Un año simulado 2.000 veces: normal +35 %, malo (1 de cada 20) +5 %. **Probabilidad de acabar el año perdiendo: 2 %.** Bajón típico: 9 %.
+- Unas 18 apuestas al mes. Con 50 € al mes y reinvirtiendo, lo normal tras 3 años es tener unos 2.800 € habiendo puesto 1.800 €.
+- Con umbrales cercanos (1,5 %, 2,5 %, 3 %) también sale positiva: no depende de un ajuste fino.
+
+**Local o visitante, ¿estadísticas por separado?** No. La fuerza general de un equipo se repite mucho de una temporada a otra (correlación 0,72), pero su ventaja "propia" de jugar en casa es pura suerte (0,02). Por eso el modelo usa todos los partidos y una ventaja de campo igual para todos los equipos de la liga.
+
+
 "Backtest" = repetir el pasado como si fuera en directo: en cada partido solo se usa lo que se sabía antes de jugarse.
 
 ### 1. Comparando casas (1X2 y goles 2,5): sí da valor

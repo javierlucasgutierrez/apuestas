@@ -76,8 +76,8 @@
   <nav>
     <button data-p="inicio" class="activa">🏠 Inicio</button>
     <button data-p="picks">🎯 Picks</button>
-    <button data-p="goles">⚽ Goles</button>
-    <button data-p="corners">🚩 Córners</button>
+    <button data-p="goles">⚽ Goles (prueba)</button>
+    <button data-p="corners">🚩 Córners (prueba)</button>
     <button data-p="historial">📊 Mi historial</button>
     <button data-p="config">⚙️ Configuración</button>
     <button data-p="ayuda">❓ Cómo funciona</button>
@@ -113,7 +113,7 @@
 <!-- PICKS -->
 <section id="picks">
   <h2>🎯 Picks del sistema</h2>
-  <p class="ayuda">Apuestas en las que una casa paga más que el precio justo del mercado. <b>Apuesta solo si encuentras la cuota mínima o más</b> en alguna de tus casas.</p>
+  <p class="ayuda"><b>Estrategia principal</b>: hándicap asiático y 1X2 con cuotas de 1,50 a 2,50, solo cuando una casa paga al menos un 2 % más que el precio justo. Es la que mejor ha funcionado en el backtest: positiva en cada temporada completa. Apuestas en las que una casa paga más que el precio justo del mercado. <b>Apuesta solo si encuentras la cuota mínima o más</b> en alguna de tus casas.</p>
   <div class="fila" style="margin-bottom:14px">
     <label style="margin:0">Mostrar los próximos
       <select id="picks-dias"><option value="1">1 día</option><option value="2">2 días</option><option value="3" selected>3 días</option><option value="7">7 días</option></select>
@@ -171,11 +171,8 @@
 
     <label>Estilo de apuestas</label>
     <select id="c-perfil">
-      <option value="cuotas_cortas">Cuotas cortas (1,60–2,10) · se acierta la mitad · recomendado</option>
-      <option value="goles">Solo goles (más/menos 2,5, cuotas 1,60–2,10) · margen pequeño</option>
-      <option value="equilibrado">Equilibrado (1,50–5) · más apuestas, se acierta 1 de 3</option>
-      <option value="conservador">Conservador · menos apuestas, más valor por apuesta</option>
-      <option value="volumen">Volumen · el máximo de apuestas</option>
+      <option value="principal">⭐ Estrategia principal: hándicap asiático + 1X2, cuotas 1,50–2,50 (recomendada)</option>
+      <option value="equilibrado">Más volumen: cuotas 1,50–5 · más apuestas pero se acierta 1 de 3 y bajones más fuertes</option>
     </select>
 
     <label>Cuánto apostar en cada pick</label>
@@ -428,6 +425,7 @@ async function cargarConfig() {
   const c = await api("/api/config");
   $("#c-bank").value = c.bank;
   $("#c-perfil").value = c.perfil;
+  if (!$("#c-perfil").value) { $("#c-perfil").value = "principal"; $("#c-metodo").value = "plano"; }
   $("#c-metodo").value = c.metodo;
   $("#c-plano").value = Math.round(c.plano * 1000) / 10;
   $("#c-ligas").value = (c.ligas || []).includes("todas") ? "todas" : "grandes";
@@ -437,7 +435,7 @@ async function cargarConfig() {
   $("#c-mensaje").textContent = "";
 }
 $("#c-metodo").onchange = () => $("#c-plano-caja").hidden = $("#c-metodo").value !== "plano";
-$("#c-perfil").onchange = () => { $("#c-metodo").value = ["cuotas_cortas", "goles"].includes($("#c-perfil").value) ? "plano" : "kelly"; $("#c-metodo").onchange(); };
+$("#c-perfil").onchange = () => { $("#c-metodo").value = $("#c-perfil").value === "principal" ? "plano" : "kelly"; $("#c-metodo").onchange(); };
 $("#btn-guardar-config").onclick = async () => {
   const r = await api("/api/config", {bank: $("#c-bank").value, perfil: $("#c-perfil").value, metodo: $("#c-metodo").value,
                                        plano: $("#c-plano").value, ligas: $("#c-ligas").value, clave_odds: $("#c-clave").value});
