@@ -17,16 +17,17 @@ from urllib.parse import parse_qs, urlparse
 import app as cli
 from predictor.cuotas import seleccionar
 from predictor.cuotas_vivo import archivo_proximos
-from predictor.datos import cargar_csv, cargar_varios
+from predictor.datos import Partido, cargar_csv, cargar_varios
 from predictor.descargar import GRANDES
 from predictor.mercados import Ajustes, Predictor
+from predictor.modelo import emparejar_equipo
 from predictor.registro import Registro, descripcion, resumir, stake_10
 from predictor.sistema import PERFILES, apuestas_del_sistema, stake
 from predictor.valor import CASAS, Oportunidad, leer_filas, precio_justo
 
 PUERTO = 8765
 PREFERENCIAS_POR_DEFECTO = {"bank": 50.0, "perfil": "goles", "metodo": "plano", "plano": 0.01,
-                            "kelly": 0.25, "tope": 0.03, "ligas": ["todas"], "casas": ["Max"], "dias": 3}
+                            "kelly": 0.25, "tope": 0.03, "ligas": ["todas"], "casas": ["Max"], "dias": 7}
 
 
 # ------------------------------------------------------------------ utilidades
@@ -131,19 +132,49 @@ MODELO = {
 }
 
 
+def proximos_partidos(modelo: Predictor) -> list[tuple]:
+    """Próximos partidos (Partido con los nombres del histórico, fila de cuotas o None).
+
+    Junta los de football-data (2-3 días antes) y los de las cuotas en vivo (hasta 1-2
+    semanas antes), traduciendo los nombres de equipo de The Odds API a los del histórico.
+    """
+    resultado, vistos = [], set()
+    filas_fd = {(f.get("Date"), f.get("HomeTeam")): f
+                for f in leer_filas([os.path.join(cli.DESCARGAS, "proximos.csv")]) if not f.get("FTHG")}
+    for p in cargar_csv(os.path.join(cli.DESCARGAS, "proximos.csv")):
+        if not p.jugado:
+            resultado.append((p, filas_fd.get((p.fecha.strftime("%d/%m/%Y"), p.local))))
+            vistos.add((p.fecha, p.local))
+    vivo = os.path.join(cli.DESCARGAS, "proximos_vivo.csv")
+    if archivo_proximos(cli.DESCARGAS) == vivo:
+        for fila in leer_filas([vivo]):
+            liga = fila.get("Div", "")
+            if liga not in modelo.goles:
+                continue
+            equipos = modelo.goles[liga].equipos
+            local = emparejar_equipo(fila["HomeTeam"], equipos)
+            visitante = emparejar_equipo(fila["AwayTeam"], equipos)
+            if not local or not visitante or local == visitante:
+                continue
+            fecha = datetime.strptime(fila["Date"], "%d/%m/%Y").date()
+            if (fecha, local) in vistos:
+                continue
+            vistos.add((fecha, local))
+            resultado.append((Partido(fecha, local, visitante, liga=liga), fila))
+    return resultado
+
+
 def datos_modelo(dias: int, tipo: str) -> dict:
     """Selecciones de goles o córners según el modelo, con su cuota mínima."""
     reglas = MODELO[tipo]
     prefs = preferencias()
     hoy = date.today()
     modelo = predictor()
-    proximos = cargar_csv(os.path.join(cli.DESCARGAS, "proximos.csv"))
-    # Precio justo del mercado en más/menos 2,5 (Pinnacle o Betfair), si viene en el archivo.
-    filas = {(f.get("Date"), f.get("HomeTeam")): f for f in leer_filas([archivo_proximos(cli.DESCARGAS)])}
+    partidos = proximos_partidos(modelo)
     registro = Registro(cli.BASE_DATOS)
     lista = []
-    for p in proximos:
-        if p.jugado or not hoy <= p.fecha <= hoy + timedelta(days=dias):
+    for p, fila in partidos:
+        if not hoy <= p.fecha <= hoy + timedelta(days=dias):
             continue
         try:
             pred = modelo.predecir(p.local, p.visitante, fecha=p.fecha)
@@ -170,7 +201,6 @@ def datos_modelo(dias: int, tipo: str) -> dict:
                 "guardado": ya_guardado(registro, p.fecha, pred.local, pred.visitante, s.mercado),
                 "mercado_justa": None, "mercado_mejor": None, "alcanzable": None,
             }
-            fila = filas.get((p.fecha.strftime("%d/%m/%Y"), p.local))
             if fila and s.mercado == "Goles +2.5":
                 justo = precio_justo(fila, "Goles 2.5")
                 mejor = fila.get("Max>2.5")

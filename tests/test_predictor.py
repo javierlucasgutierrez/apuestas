@@ -381,5 +381,19 @@ class TestPrimeraParte(unittest.TestCase):
         self.assertLess(pred.probs["1ª parte goles +0.5"], pred.probs["Goles +0.5"] if "Goles +0.5" in pred.probs else 1)
 
 
+class TestNombresDeEquipos(unittest.TestCase):
+    def test_empareja_nombres_de_otras_webs(self):
+        from predictor.modelo import emparejar_equipo
+        liga = ["Real Madrid", "Ath Madrid", "Betis", "Ath Bilbao", "Sociedad", "Espanol", "Vallecano"]
+        self.assertEqual(emparejar_equipo("Atlético Madrid", liga), "Ath Madrid")  # ¡no el Real Madrid!
+        self.assertEqual(emparejar_equipo("Real Betis", liga), "Betis")
+        self.assertEqual(emparejar_equipo("Athletic Club", liga), "Ath Bilbao")
+        self.assertEqual(emparejar_equipo("Espanyol", liga), "Espanol")
+        self.assertEqual(emparejar_equipo("Rayo Vallecano", liga), "Vallecano")
+        self.assertIsNone(emparejar_equipo("Equipo Inventado", liga))
+        self.assertEqual(emparejar_equipo("Wolverhampton Wanderers", ["Wolves", "Man City"]), "Wolves")
+        self.assertEqual(emparejar_equipo("Inter Milan", ["Inter", "Milan"]), "Inter")
+
+
 if __name__ == "__main__":
     unittest.main()

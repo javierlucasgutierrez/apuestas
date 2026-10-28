@@ -213,6 +213,50 @@ class ModeloFuerzas:
         return sorted(filas, key=lambda x: -x[3])
 
 
+# Nombres que otras webs escriben muy distinto a football-data (ya normalizados).
+ALIAS = {
+    "wolverhampton wanderers": "wolves", "inter milan": "inter", "internazionale": "inter",
+    "paris saint germain": "paris sg", "psg": "paris sg", "borussia dortmund": "dortmund",
+    "borussia monchengladbach": "m'gladbach", "bayer leverkusen": "leverkusen",
+    "eintracht frankfurt": "ein frankfurt", "olympique marseille": "marseille", "olympique lyonnais": "lyon",
+    "sporting lisbon": "sp lisbon", "sporting cp": "sp lisbon", "sporting braga": "sp braga",
+    "nottingham forest": "nott'm forest", "sheffield united": "sheffield united",
+    "queens park rangers": "qpr", "west bromwich albion": "west brom", "athletic club": "ath bilbao",
+}
+
+
+def _normalizar_nombre(nombre: str) -> str:
+    import unicodedata
+    t = unicodedata.normalize("NFKD", nombre.lower()).encode("ascii", "ignore").decode()
+    t = " ".join(t.replace("-", " ").replace(".", " ").split())
+    t = ALIAS.get(t, t)
+    # football-data escribe "Ath" tanto para Atlético como para Athletic.
+    t = " ".join("ath" if w in ("atletico", "athletic", "atl") else w for w in t.split())
+    for palabra in ("fc", "cf", "ac", "afc", "sc", "ssc", "as", "ud", "cd", "rc", "rcd", "sd", "real", "club",
+                    "de", "calcio", "deportivo"):
+        t = f" {t} ".replace(f" {palabra} ", " ").strip()
+    return ALIAS.get(t, t)
+
+
+def emparejar_equipo(nombre: str, equipos: list[str], minimo: float = 0.6) -> str | None:
+    """El equipo de `equipos` que corresponde a `nombre` aunque se escriba distinto en otra web
+    ("Real Betis" → "Betis", "Atlético Madrid" → "Ath Madrid"). None si no hay uno claro."""
+    objetivo = _normalizar_nombre(nombre)
+    normalizados = {t: _normalizar_nombre(t) for t in equipos}
+    for t, n in normalizados.items():
+        if n == objetivo:
+            return t
+    contienen = [t for t, n in normalizados.items() if len(n) >= 4 and len(objetivo) >= 4
+                 and (n in objetivo or objetivo in n)]
+    if len(contienen) == 1:
+        return contienen[0]
+    puntos = sorted(((difflib.SequenceMatcher(None, objetivo, n).ratio(), t) for t, n in normalizados.items()),
+                    reverse=True)
+    if puntos and puntos[0][0] >= minimo and (len(puntos) == 1 or puntos[0][0] - puntos[1][0] >= 0.08):
+        return puntos[0][1]
+    return None
+
+
 def buscar_equipo(nombre: str, equipos: list[str]) -> str:
     """Nombre exacto del equipo (sin distinguir mayúsculas) o error con sugerencias."""
     for t in equipos:
