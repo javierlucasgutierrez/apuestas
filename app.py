@@ -25,6 +25,7 @@ from predictor.ejemplo import generar_liga
 from predictor.mercados import Ajustes, Predictor, familia
 from predictor.modelo import buscar_equipo
 from predictor.optimizar import optimizar
+from predictor.sistema import PERFILES, apuestas_del_sistema, comparar_perfiles, montecarlo, simular_bank, stake
 from predictor.valor import CASAS, backtest_valor, leer_filas, oportunidades, probabilidad_consenso
 
 CARPETA = os.path.dirname(os.path.abspath(__file__))
@@ -322,6 +323,75 @@ def orden_valor(args) -> None:
     mostrar_valor_mercado(filas, predictor, args, hoy)
 
 
+def orden_sistema(args) -> None:
+    kw = {"fraccion_kelly": args.kelly, "tope": args.tope, "plano": args.plano}
+    if args.backtest:
+        filas = leer_filas(args.datos)
+        print("Cada perfil, en temporadas de ENTRENAMIENTO (2023-25, con las que se diseñó) y de")
+        print("PRUEBA (2025-27, que el sistema no había visto). Lo que vale es la prueba.\n")
+        print(f"{'Perfil':<13}{'Periodo':<10}{'Apuestas':>9}{'Por semana':>11}{'Ganadas':>9}{'Cuota':>7}"
+              f"{'Yield':>8}{'CLV':>7}")
+        resultados = comparar_perfiles(filas, args.casas, args.cuota_min)
+        for r in resultados:
+            for nombre, ops in (("entreno", r.entreno), ("prueba", r.prueba)):
+                if not ops:
+                    continue
+                semanas = max((ops[-1].fecha - ops[0].fecha).days / 7, 1)
+                clv = [o.clv for o in ops if o.clv is not None]
+                print(f"{r.perfil:<13}{nombre:<10}{len(ops):>9}{len(ops) / semanas:>11.1f}"
+                      f"{100 * sum(o.beneficio > 0 for o in ops) / len(ops):>8.0f}%"
+                      f"{sum(o.cuota for o in ops) / len(ops):>7.2f}"
+                      f"{100 * sum(o.beneficio for o in ops) / len(ops):>+7.1f}%"
+                      f"{100 * sum(clv) / max(len(clv), 1):>+6.1f}%")
+        print(f"\nBANK de {args.bank:.0f} € en las temporadas de prueba, apostando con "
+              f"{'Kelly x' + str(args.kelly) if args.metodo == 'kelly' else f'{100 * args.plano:.0f} % fijo'}:")
+        for r in resultados:
+            if not r.prueba:
+                continue
+            sim = simular_bank(r.prueba, args.bank, args.metodo, **kw)
+            print(f"  {r.perfil:<13}{args.bank:.0f} € → {sim.bank_final:.0f} € ({sim.rentabilidad_bank:+.0f} %) · "
+                  f"apostado {sim.apostado:.0f} € · peor caída {100 * sim.caida_maxima:.0f} %")
+        print("\nUNA TEMPORADA SIMULADA 2.000 veces (sorteando apuestas reales del histórico):")
+        print(f"  {'Perfil':<13}{'Apuestas':>9}{'Mala (5 %)':>12}{'Normal':>9}{'Buena (5 %)':>13}"
+              f"{'P(perder)':>11}{'Caída típica':>14}")
+        for r in resultados:
+            todas = r.entreno + r.prueba
+            if not todas:
+                continue
+            temporadas = max((todas[-1].fecha - todas[0].fecha).days / 365, 1)
+            n = int(len(todas) / temporadas)
+            mc = montecarlo(todas, n, 2000, args.metodo, **kw)
+            print(f"  {r.perfil:<13}{n:>9}{mc['peor_5']:>+11.0f}%{mc['mediana']:>+8.0f}%{mc['mejor_5']:>+12.0f}%"
+                  f"{mc['prob_perder']:>10.0f}%{mc['caida_mediana']:>13.0f}%")
+        print("\nSupone que el futuro se parece al pasado y que consigues las cuotas indicadas.")
+        return
+
+    hoy = date.today() if not args.desde else date.fromisoformat(args.desde)
+    filas = [f for f in leer_filas([args.proximos]) if not f.get("FTHG")]
+    codigos = {LIGAS[l][0] if l in LIGAS else l for l in (args.liga or [])}
+    elegidas = [o for _, o in apuestas_del_sistema(filas, args.perfil, args.casas, args.cuota_min)
+                if hoy <= o.fecha <= hoy + timedelta(days=args.dias) and (not codigos or o.liga in codigos)]
+    print(f"SISTEMA · perfil {args.perfil} · bank {args.bank:.0f} € · "
+          f"{'Kelly x' + str(args.kelly) if args.metodo == 'kelly' else f'{100 * args.plano:.0f} % fijo'}")
+    print("=" * 66)
+    if not elegidas:
+        print("Ninguna apuesta ahora mismo. Vuelve tras 'python app.py descargar'.")
+        return
+    total = 0.0
+    for o in elegidas:
+        importe = args.bank * stake(o, args.metodo, **kw)
+        total += importe
+        liga = NOMBRE_LIGA.get(o.liga, o.liga)
+        print(f"{o.fecha:%a %d/%m}  {o.local} - {o.visitante} [{liga}]")
+        print(f"      {o.mercado} en {CASAS.get(o.casa, o.casa)} @ {o.cuota:.2f}  (justa {o.cuota_justa:.2f}, "
+              f"valor {100 * o.valor:+.1f} %)  →  {importe:.2f} €")
+    print("-" * 66)
+    print(f"{len(elegidas)} apuestas · total {total:.2f} € ({100 * total / args.bank:.1f} % del bank)")
+    print("Comprueba cada cuota en Oddspedia: si ha bajado de la justa × 1,02, ya no tiene valor.")
+    print("'Mejor cuota del mercado' puede ser de una casa que no opera en España: busca esa cuota")
+    print("(o más) entre tus casas. Sin varias cuentas abiertas, el sistema pierde casi toda su ventaja.")
+
+
 def orden_backtest(args) -> None:
     partidos = cargar_varios(args.datos)
     print("Calculando: el modelo se reajusta cada semana solo con lo que se sabía en ese momento...")
@@ -439,6 +509,22 @@ def main(argv=None) -> None:
     p.add_argument("--liga", nargs="+", help="Solo estas ligas (laliga, premier... o SP1, E0...).")
     p.add_argument("--backtest", action="store_true", help="Probar la estrategia con el histórico.")
     p.set_defaults(func=orden_valor)
+
+    p = sub.add_parser("sistema", help="El sistema completo: qué apostar hoy y cuánto (o su backtest).")
+    opciones_datos(p)
+    opciones_seleccion(p)
+    p.add_argument("--perfil", choices=list(PERFILES), default="equilibrado",
+                   help="conservador, equilibrado (por defecto) o volumen.")
+    p.add_argument("--metodo", choices=["kelly", "plano"], default="kelly", help="Cómo calcular el importe.")
+    p.add_argument("--kelly", type=float, default=0.25, help="Fracción de Kelly (0.25).")
+    p.add_argument("--tope", type=float, default=0.03, help="Máximo del bank por apuesta (0.03).")
+    p.add_argument("--plano", type=float, default=0.01, help="Con --metodo plano, parte del bank (0.01).")
+    p.add_argument("--proximos", default=os.path.join(DESCARGAS, "proximos.csv"))
+    p.add_argument("--dias", type=int, default=3, help="Partidos de los próximos N días (3).")
+    p.add_argument("--desde", help="Fecha inicial AAAA-MM-DD (por defecto hoy).")
+    p.add_argument("--liga", nargs="+", help="Solo estas ligas.")
+    p.add_argument("--backtest", action="store_true", help="Probar los perfiles con el histórico.")
+    p.set_defaults(func=orden_sistema)
 
     p = sub.add_parser("backtest", help="¿Se cumplen las probabilidades? ¿Habría ganado dinero?")
     opciones_datos(p)

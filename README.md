@@ -101,6 +101,24 @@ Mismas reglas, ahora en **20 ligas** (las 5 grandes, sus segundas divisiones, Le
 
 Para bajarlas todas: `python app.py descargar --ligas todas`.
 
+### 1 ter. El sistema completo (`python app.py sistema`)
+
+Junta lo que ha aguantado la prueba: **hándicap asiático + 1X2 con cuota hasta 5**, solo cuando una casa paga por encima del precio justo. **Goles 2,5 queda fuera**: ganaba en 2023-25 y perdía en 2025-27.
+
+Se diseñó con las temporadas 2023/24 y 2024/25 y se comprobó con **2025/26 y 2026/27, que el sistema no había visto**. Datos de 20 ligas, con la mejor cuota del mercado:
+
+| Perfil | Apuestas (prueba) | Por semana | Ganadas | Cuota media | Rentabilidad | CLV | Bank de 1.000 € (Kelly 1/4) | Peor caída |
+|---|---|---|---|---|---|---|---|---|
+| Conservador (valor ≥ 3 %) | 495 | 8 | 35 % | 3,24 | +3,7 % | +4,5 % | 1.513 € | 24 % |
+| **Equilibrado (≥ 2 %)** | **828** | **13** | **36 %** | **3,24** | **+8,7 %** | **+2,9 %** | **1.784 €** | **21 %** |
+| Volumen (hándicap ≥ 1 %) | 919 | 14 | 37 % | 3,11 | +8,5 % | +2,7 % | 1.832 € | 20 % |
+
+**Una temporada simulada 2.000 veces** (sorteando apuestas reales), perfil equilibrado y unas 1.090 apuestas al año: en un año normal el bank sube un **+58 %**; en un año malo (el peor 5 %), se queda **igual**; la probabilidad de acabar el año perdiendo es del **5 %**; y lo normal es pasar por una caída del **17 %** en algún momento.
+
+⚠ **La condición más importante: tener cuenta en muchas casas.** Con solo Bet365 y bwin, el mismo sistema **queda en tablas** en la prueba (+0,7 %, unas 3 apuestas por semana). La ventaja sale de coger siempre la mejor cuota. "Mejor cuota del mercado" es la más alta entre decenas de casas, y algunas no operan en España. Cuantas más casas españolas tengas (Bet365, bwin, William Hill, Betfair, Codere, Sportium, Betway, 888, Winamax, Kirolbet, Retabet...), más te acercas a la tabla de arriba.
+
+Otros riesgos: la cuota puede moverse antes de que apuestes (compruébala siempre) y las casas limitan a quien gana de forma constante.
+
 ### 2. Nuestro modelo solo, contra las casas (1X2 y goles): no da valor
 
 Si se apuesta solo porque el modelo ve valor frente a Bet365, se pierde un 5–7 % y el CLV es negativo (−1,6 % / −2,6 %). En 1X2 y goles **la casa sabe más que las estadísticas**. Por eso la herramienta ya **no** recomienda 1X2 ni goles basándose solo en el modelo.
@@ -171,7 +189,15 @@ Con una sola cuota (`"corners-10.5=1.62"`) decide el modelo y te dice si llega a
 
 Mercados válidos: `1`, `X`, `2`, `1X`, `X2`, `12`, `goles+2.5`, `goles-1.5`, `corners+8.5`, `corners-11.5`, `ambos si`, `ambos no`.
 
-### 4. Solo el comparador de casas
+### 4. El sistema: qué apostar hoy y cuánto
+
+```
+python app.py sistema --bank 1000                       # perfil equilibrado, Kelly 1/4
+python app.py sistema --bank 1000 --perfil volumen
+python app.py sistema --backtest --casas B365 BW WH     # pruébalo solo con TUS casas
+```
+
+### 5. Solo el comparador de casas
 
 ```
 python app.py valor              # próximos partidos
@@ -179,7 +205,7 @@ python app.py valor --backtest   # la tabla de resultados de arriba
 python app.py valor --backtest --casas B365 BW   # solo con Bet365 y bwin
 ```
 
-### 5. Otras órdenes
+### 6. Otras órdenes
 
 - `python app.py equipos --liga SP1`: goles y córners a favor y en contra de cada equipo. Ligas: E0, SP1, I1, D1, F1.
 - `python app.py backtest`: comprueba si se cumplen las probabilidades del modelo.
@@ -207,6 +233,7 @@ python -m unittest discover -s tests
 
 - `app.py`: la aplicación.
 - `ajustes.json`: ajustes y corrección calculados por `optimizar`.
+- `predictor/sistema.py`: perfiles del sistema, importe de cada apuesta y simulación del bank.
 - `predictor/valor.py`: comparador de casas, precio justo y CLV.
 - `predictor/modelo.py`: fuerzas de ataque y defensa, Poisson / Dixon-Coles y binomial negativa.
 - `predictor/mercados.py`: probabilidad de cada mercado.

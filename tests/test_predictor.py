@@ -226,5 +226,27 @@ class TestValorMercado(unittest.TestCase):
         self.assertLess(probabilidad_consenso([2.0]), 0.5)
 
 
+class TestSistema(unittest.TestCase):
+    def op(self, dia, cuota, prob, beneficio):
+        from predictor.valor import Oportunidad
+        return Oportunidad(date(2025, 9, dia), "SP1", "A", "B", "1", "B365", cuota, prob, "PS",
+                           familia="1X2", beneficio=beneficio)
+
+    def test_stake(self):
+        from predictor.sistema import stake
+        o = self.op(1, 2.0, 0.52, 1.0)  # Kelly completo: 4 %
+        self.assertAlmostEqual(stake(o, "kelly", fraccion_kelly=0.25), 0.01)
+        self.assertAlmostEqual(stake(o, "kelly", fraccion_kelly=1.0, tope=0.03), 0.03)
+        self.assertAlmostEqual(stake(o, "plano", plano=0.02), 0.02)
+
+    def test_simular_bank(self):
+        from predictor.sistema import simular_bank
+        ops = [self.op(1, 2.0, 0.6, 1.0), self.op(1, 2.0, 0.6, -1.0), self.op(2, 2.0, 0.6, 1.0)]
+        sim = simular_bank(ops, 1000, "plano", plano=0.10)
+        # Día 1: +100 y -100 sobre 1000 → 1000. Día 2: +100 → 1100.
+        self.assertAlmostEqual(sim.bank_final, 1100)
+        self.assertEqual(sim.apuestas, 3)
+
+
 if __name__ == "__main__":
     unittest.main()
