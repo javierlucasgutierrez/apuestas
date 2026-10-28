@@ -356,7 +356,7 @@ def orden_sistema(args) -> None:
         filas = leer_filas(args.datos)
         print("Cada perfil, en temporadas de ENTRENAMIENTO (2023-25, con las que se diseñó) y de")
         print("PRUEBA (2025-27, que el sistema no había visto). Lo que vale es la prueba.\n")
-        print(f"{'Perfil':<13}{'Periodo':<10}{'Apuestas':>9}{'Por semana':>11}{'Ganadas':>9}{'Cuota':>7}"
+        print(f"{'Perfil':<15}{'Periodo':<10}{'Apuestas':>9}{'Por semana':>11}{'Ganadas':>9}{'Cuota':>7}"
               f"{'Yield':>8}{'CLV':>7}")
         resultados = comparar_perfiles(filas, args.casas, args.cuota_min)
         for r in resultados:
@@ -365,7 +365,7 @@ def orden_sistema(args) -> None:
                     continue
                 semanas = max((ops[-1].fecha - ops[0].fecha).days / 7, 1)
                 clv = [o.clv for o in ops if o.clv is not None]
-                print(f"{r.perfil:<13}{nombre:<10}{len(ops):>9}{len(ops) / semanas:>11.1f}"
+                print(f"{r.perfil:<15}{nombre:<10}{len(ops):>9}{len(ops) / semanas:>11.1f}"
                       f"{100 * sum(o.beneficio > 0 for o in ops) / len(ops):>8.0f}%"
                       f"{sum(o.cuota for o in ops) / len(ops):>7.2f}"
                       f"{100 * sum(o.beneficio for o in ops) / len(ops):>+7.1f}%"
@@ -376,10 +376,10 @@ def orden_sistema(args) -> None:
             if not r.prueba:
                 continue
             sim = simular_bank(r.prueba, args.bank, args.metodo, **kw)
-            print(f"  {r.perfil:<13}{args.bank:.0f} € → {sim.bank_final:.0f} € ({sim.rentabilidad_bank:+.0f} %) · "
+            print(f"  {r.perfil:<15}{args.bank:.0f} € → {sim.bank_final:.0f} € ({sim.rentabilidad_bank:+.0f} %) · "
                   f"apostado {sim.apostado:.0f} € · peor caída {100 * sim.caida_maxima:.0f} %")
         print("\nUNA TEMPORADA SIMULADA 2.000 veces (sorteando apuestas reales del histórico):")
-        print(f"  {'Perfil':<13}{'Apuestas':>9}{'Mala (5 %)':>12}{'Normal':>9}{'Buena (5 %)':>13}"
+        print(f"  {'Perfil':<15}{'Apuestas':>9}{'Mala (5 %)':>12}{'Normal':>9}{'Buena (5 %)':>13}"
               f"{'P(perder)':>11}{'Caída típica':>14}")
         for r in resultados:
             todas = r.entreno + r.prueba
@@ -388,7 +388,7 @@ def orden_sistema(args) -> None:
             temporadas = max((todas[-1].fecha - todas[0].fecha).days / 365, 1)
             n = int(len(todas) / temporadas)
             mc = montecarlo(todas, n, 2000, args.metodo, **kw)
-            print(f"  {r.perfil:<13}{n:>9}{mc['peor_5']:>+11.0f}%{mc['mediana']:>+8.0f}%{mc['mejor_5']:>+12.0f}%"
+            print(f"  {r.perfil:<15}{n:>9}{mc['peor_5']:>+11.0f}%{mc['mediana']:>+8.0f}%{mc['mejor_5']:>+12.0f}%"
                   f"{mc['prob_perder']:>10.0f}%{mc['caida_mediana']:>13.0f}%")
         print("\nSupone que el futuro se parece al pasado y que consigues las cuotas indicadas.")
         return

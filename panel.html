@@ -159,6 +159,7 @@
     <label>Estilo de apuestas</label>
     <select id="c-perfil">
       <option value="cuotas_cortas">Cuotas cortas (1,60–2,10) · se acierta la mitad · recomendado</option>
+      <option value="goles">Solo goles (más/menos 2,5, cuotas 1,60–2,10) · margen pequeño</option>
       <option value="equilibrado">Equilibrado (1,50–5) · más apuestas, se acierta 1 de 3</option>
       <option value="conservador">Conservador · menos apuestas, más valor por apuesta</option>
       <option value="volumen">Volumen · el máximo de apuestas</option>
@@ -412,7 +413,7 @@ async function cargarConfig() {
   $("#c-mensaje").textContent = "";
 }
 $("#c-metodo").onchange = () => $("#c-plano-caja").hidden = $("#c-metodo").value !== "plano";
-$("#c-perfil").onchange = () => { $("#c-metodo").value = $("#c-perfil").value === "cuotas_cortas" ? "plano" : "kelly"; $("#c-metodo").onchange(); };
+$("#c-perfil").onchange = () => { $("#c-metodo").value = ["cuotas_cortas", "goles"].includes($("#c-perfil").value) ? "plano" : "kelly"; $("#c-metodo").onchange(); };
 $("#btn-guardar-config").onclick = async () => {
   const r = await api("/api/config", {bank: $("#c-bank").value, perfil: $("#c-perfil").value, metodo: $("#c-metodo").value,
                                        plano: $("#c-plano").value, ligas: $("#c-ligas").value, clave_odds: $("#c-clave").value});
