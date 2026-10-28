@@ -25,7 +25,7 @@ from predictor.sistema import PERFILES, apuestas_del_sistema, stake
 from predictor.valor import CASAS, Oportunidad, leer_filas, precio_justo
 
 PUERTO = 8765
-PREFERENCIAS_POR_DEFECTO = {"bank": 50.0, "perfil": "principal", "metodo": "plano", "plano": 0.01,
+PREFERENCIAS_POR_DEFECTO = {"bank": 50.0, "perfil": "principal", "metodo": "plano", "plano": 0.015,
                             "kelly": 0.25, "tope": 0.03, "ligas": ["todas"], "casas": ["Max"], "dias": 3}
 
 

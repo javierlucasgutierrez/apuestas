@@ -160,21 +160,33 @@ Con el criterio de Kelly: cuanto más valor y más probabilidad, más se apuesta
 
 ### ⭐ La estrategia principal (la recomendada)
 
-**Hándicap asiático y 1X2, cuotas de 1,50 a 2,50, solo cuando una casa paga al menos un 2 % más que el precio justo de Pinnacle o Betfair.** Apuesta fija del 1 % del bank. 20 ligas.
+**Hándicap asiático y 1X2, cuotas de 1,50 a 2,50, solo cuando una casa paga al menos un 2 % más que el precio justo de Pinnacle o Betfair.** Apuesta fija del **1,5 % del bank**. 20 ligas.
 
 | Temporada | Apuestas | Rentabilidad |
 |---|---|---|
-| 2023/24 | 342 | +14,8 % |
-| 2024/25 | 196 | +10,0 % |
-| 2025/26 | 215 | +15,7 % |
-| 2026/27 (en curso) | 23 | −10,2 % |
-| **Total** | **776** | **+13,1 %** (CLV +3,0 %) |
+| 2023/24 | 451 | +14,8 % |
+| 2024/25 | 265 | +6,3 % |
+| 2025/26 | 257 | +14,3 % |
+| 2026/27 (en curso) | 24 | −3,5 % |
+| **Total** | **997** | **+12,0 %** (CLV +2,8 %) |
 
-- Diseñada con 2023–2025 (+12,0 %) y comprobada con 2025–2027, que no había visto (**+12,7 %**, CLV +3,8 %).
-- Se gana algo más de la mitad (52–53 %) a una cuota media de 2,04. Peor racha: 7 fallos seguidos.
-- Un año simulado 2.000 veces: normal +35 %, malo (1 de cada 20) +5 %. **Probabilidad de acabar el año perdiendo: 2 %.** Bajón típico: 9 %.
-- Unas 18 apuestas al mes. Con 50 € al mes y reinvirtiendo, lo normal tras 3 años es tener unos 2.800 € habiendo puesto 1.800 €.
-- Con umbrales cercanos (1,5 %, 2,5 %, 3 %) también sale positiva: no depende de un ajuste fino.
+- Diseñada con 2023–2025 (+10,2 %) y comprobada con 2025–2027, que no había visto (**+12,4 %**, CLV +3,6 %). Con solo Betfair como referencia (como en directo desde esta temporada) también gana.
+- Se gana algo más de la mitad (52–53 %) a una cuota media de 2,03. Unas 4–8 apuestas por semana.
+- Bank de 1.000 € en las temporadas de prueba: **1.634 €** (peor bajón, 8 %).
+- Un año simulado 2.000 veces: normal **+65 %**, malo (1 de cada 20) +7 %. **Probabilidad de acabar el año perdiendo: 2 %.** Bajón típico: 15 %.
+
+**Cómo se calcula el precio justo: método "odds ratio".** Las casas meten más margen en los resultados poco probables (sesgo favorito-sorpresa). Probé cuatro formas de quitar ese margen:
+
+| Método | Apuestas | Rentabilidad | Beneficio total |
+|---|---|---|---|
+| Proporcional | 781 | +13,2 % | +103 u |
+| Potencia | 1.256 | +9,0 % | +113 u |
+| **Odds ratio** | **997** | **+12,0 %** | **+120 u** |
+| Shin | 1.056 | +10,7 % | +113 u |
+
+**Lo que se probó y NO mejora:** exigir que nuestro modelo también esté de acuerdo (+6,4 % frente a +11,4 %: en estos mercados el mercado sabe más), las rachas recientes, y separar estadísticas de local y visitante.
+
+**Cuánto apostar:** con el 1 % del bank el año normal da +23 % y el peor bajón ronda el 15 %; con el 1,5 %, +35 % y 22 %; con el 2 %, +49 % y 28 %. La probabilidad de acabar el año perdiendo apenas cambia (5–7 %); lo que crece son los bajones.
 
 **Local o visitante, ¿estadísticas por separado?** No. La fuerza general de un equipo se repite mucho de una temporada a otra (correlación 0,72), pero su ventaja "propia" de jugar en casa es pura suerte (0,02). Por eso el modelo usa todos los partidos y una ventaja de campo igual para todos los equipos de la liga.
 

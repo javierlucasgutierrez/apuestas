@@ -50,15 +50,59 @@ def _cuota(fila: dict, columna: str) -> float | None:
     return v if v > 1 else None
 
 
+# Cómo se quita el margen a la casa de referencia para obtener el precio justo.
+METODO_MARGEN = "odds_ratio"  # el que más beneficio total dio en el backtest (ver README)
+
+
+def _biseccion(f, bajo: float, alto: float, pasos: int = 60) -> float:
+    """Raíz de una función creciente en [bajo, alto]."""
+    for _ in range(pasos):
+        medio = (bajo + alto) / 2
+        if f(medio) > 0:
+            alto = medio
+        else:
+            bajo = medio
+    return (bajo + alto) / 2
+
+
+def quitar_margen(implicitas: list[float], metodo: str | None = None) -> list[float]:
+    """Probabilidades justas a partir de las implícitas (1/cuota), que suman más de 1.
+
+    - proporcional: reparte el margen por igual (el más simple).
+    - potencia: p = q^k, con k tal que sumen 1. Quita más margen a los resultados poco probables.
+    - odds_ratio: p = q / (c + q - c·q), con c tal que sumen 1.
+    - shin: modelo de Shin (1993), que supone que parte de los apostantes tiene información.
+    Los tres últimos corrigen el sesgo favorito-sorpresa: las casas ponen más margen en las sorpresas.
+    """
+    metodo = metodo or METODO_MARGEN
+    total = sum(implicitas)
+    if metodo == "proporcional" or total <= 1:
+        return [q / total for q in implicitas]
+    if metodo == "potencia":
+        k = _biseccion(lambda k: 1 - sum(q ** k for q in implicitas), 1.0, 3.0)
+        probs = [q ** k for q in implicitas]
+    elif metodo == "odds_ratio":
+        c = _biseccion(lambda c: 1 - sum(q / (c + q - c * q) for q in implicitas), 1.0, 3.0)
+        probs = [q / (c + q - c * q) for q in implicitas]
+    elif metodo == "shin":
+        def suma(z):
+            return sum(((z * z + 4 * (1 - z) * q * q / total) ** 0.5 - z) / (2 * (1 - z)) for q in implicitas)
+        z = _biseccion(lambda z: 1 - suma(z), 0.0, 0.4)
+        probs = [((z * z + 4 * (1 - z) * q * q / total) ** 0.5 - z) / (2 * (1 - z)) for q in implicitas]
+    else:
+        raise ValueError(f"Método desconocido: {metodo}")
+    t = sum(probs)
+    return [p / t for p in probs]
+
+
 def precio_justo(fila: dict, mercado: str, cierre: bool = False) -> tuple[list[float], str] | None:
     """Probabilidades sin margen según la referencia más fiable disponible."""
     for ref in (REFERENCIAS_CIERRE if cierre else REFERENCIAS):
         cuotas = [_cuota(fila, _columna(ref, mercado, s)) for _, s in MERCADOS[mercado]]
         if all(cuotas):
             implicitas = [1 / c for c in cuotas]
-            total = sum(implicitas)
-            if total < 1.06:  # con más margen ya no es una referencia fina
-                return [p / total for p in implicitas], ref
+            if sum(implicitas) < 1.06:  # con más margen ya no es una referencia fina
+                return quitar_margen(implicitas), ref
     return None
 
 
@@ -139,8 +183,7 @@ def _justo_dos_lados(fila: dict, prefijos: list[str], local: str, visitante: str
     for ref in prefijos:
         a, b = _cuota(fila, ref + local), _cuota(fila, ref + visitante)
         if a and b and 1 / a + 1 / b < 1.06:
-            total = 1 / a + 1 / b
-            return [1 / a / total, 1 / b / total]
+            return quitar_margen([1 / a, 1 / b])
     return None
 
 
