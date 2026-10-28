@@ -234,6 +234,57 @@ def datos_modelo(dias: int, tipo: str) -> dict:
     return {"selecciones": lista[:30], "stake_sugerido": stake_sugerido}
 
 
+CALCULADORA = ["Goles +1.5", "Goles -1.5", "Goles +2.5", "Goles -2.5", "Goles +3.5", "Goles -3.5",
+               "1ª parte goles +0.5", "1ª parte goles -0.5", "1ª parte goles +1.5", "1ª parte goles -1.5"] + \
+              [f"Córners {s}{l}" for l in (7.5, 8.5, 9.5, 10.5, 11.5, 12.5) for s in "+-"]
+
+
+def lista_partidos(dias: int) -> dict:
+    """Partidos de los próximos días que el modelo puede calcular (para la calculadora)."""
+    modelo = predictor()
+    hoy = date.today()
+    lista = []
+    for p, _ in proximos_partidos(modelo):
+        if not hoy <= p.fecha <= hoy + timedelta(days=dias):
+            continue
+        try:
+            modelo.predecir(p.local, p.visitante)
+        except KeyError:
+            continue
+        lista.append({"fecha": p.fecha.isoformat(), "dia": dia(p.fecha), "liga": p.liga,
+                      "nombre_liga": cli.NOMBRE_LIGA.get(p.liga, p.liga), "local": p.local, "visitante": p.visitante})
+    lista.sort(key=lambda x: (x["fecha"], x["nombre_liga"]))
+    return {"partidos": lista}
+
+
+def probabilidades_partido(fecha: str, local: str, visitante: str) -> dict:
+    """Probabilidad, cuota justa y cuota mínima de cada mercado de goles y córners de un partido."""
+    prefs = preferencias()
+    modelo = predictor()
+    pred = modelo.predecir(local, visitante, fecha=date.fromisoformat(fecha))
+    fila = next((f for p, f in proximos_partidos(modelo)
+                 if p.fecha.isoformat() == fecha and p.local == pred.local), None)
+    justo_25 = precio_justo(fila, "Goles 2.5") if fila else None
+    mercados = []
+    for m in CALCULADORA:
+        prob = pred.probs.get(m)
+        if not prob:
+            continue
+        item = {"mercado": m, "familia": "Córners" if m.startswith("Córners") else "Goles",
+                "descripcion": descripcion(Oportunidad(date.today(), "", pred.local, pred.visitante, m, "", 0, 0, "")),
+                "prob": round(100 * prob, 1), "cuota_justa": round(1 / prob, 2),
+                # Las apuestas que salen solo del modelo necesitan más margen: un 5 % de valor.
+                "cuota_minima": round(max(1.50, 1.05 / prob), 2), "mercado_justa": None}
+        if justo_25 and m in ("Goles +2.5", "Goles -2.5"):
+            item["mercado_justa"] = round(1 / justo_25[0][0 if "+" in m else 1], 2)
+        mercados.append(item)
+    return {"local": pred.local, "visitante": pred.visitante, "liga": pred.liga,
+            "goles": round(pred.goles_local + pred.goles_visitante, 2),
+            "corners": None if pred.corners_local is None else round(pred.corners_local + pred.corners_visitante, 1),
+            "avisos": pred.avisos, "mercados": mercados, "bank": prefs["bank"], "plano": prefs["plano"],
+            "stake": stake_10(prefs["plano"], prefs["tope"])}
+
+
 def datos_historial() -> dict:
     registro = Registro(cli.BASE_DATOS)
     picks = registro.picks()
@@ -383,6 +434,10 @@ class Manejador(BaseHTTPRequestHandler):
                 return self._responder({"error": "Primero pulsa «Actualizar datos» en Inicio."})
             if url.path == "/api/picks":
                 return self._responder(datos_picks(dias))
+            if url.path == "/api/partidos":
+                return self._responder(lista_partidos(dias))
+            if url.path == "/api/probs":
+                return self._responder(probabilidades_partido(q["fecha"][0], q["local"][0], q["visitante"][0]))
             if url.path in ("/api/corners", "/api/goles"):
                 return self._responder(datos_modelo(dias, url.path.rsplit("/", 1)[1]))
             if url.path == "/api/historial":

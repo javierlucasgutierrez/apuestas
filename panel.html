@@ -78,6 +78,7 @@
     <button data-p="picks">🎯 Picks</button>
     <button data-p="goles">⚽ Goles (modelo)</button>
     <button data-p="corners">🚩 Córners (prueba)</button>
+    <button data-p="calculadora">🧮 Calculadora</button>
     <button data-p="historial">📊 Mi historial</button>
     <button data-p="config">⚙️ Configuración</button>
     <button data-p="ayuda">❓ Cómo funciona</button>
@@ -150,6 +151,25 @@
     </label>
   </div>
   <div id="corners-lista"></div>
+</section>
+
+<!-- CALCULADORA -->
+<section id="calculadora">
+  <h2>🧮 ¿Apuesto o no? Escribe la cuota que has encontrado</h2>
+  <p class="ayuda">Elige el partido y la apuesta, mira en tus casas cuánto pagan y escríbelo. El programa te dice al momento si vale la pena y cuánto apostar.</p>
+  <div class="tarjeta">
+    <label>1. Partido</label>
+    <select id="calc-partido" style="width:100%"></select>
+    <div id="calc-info" class="ayuda" style="margin-top:8px"></div>
+    <label>2. Apuesta</label>
+    <select id="calc-mercado" style="width:100%"></select>
+    <label>3. Cuota que has encontrado</label>
+    <div class="fila">
+      <input id="calc-cuota" class="pequeno" inputmode="decimal" placeholder="1,85" style="font-size:20px;width:120px">
+      <input id="calc-casa" class="pequeno" placeholder="Casa" style="width:140px">
+    </div>
+    <div id="calc-resultado" style="margin-top:16px"></div>
+  </div>
 </section>
 
 <!-- HISTORIAL -->
@@ -245,7 +265,7 @@ async function api(ruta, datos) {
 function ir(nombre) {
   document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("activa", b.dataset.p === nombre));
   document.querySelectorAll("section").forEach((s) => s.classList.toggle("activa", s.id === nombre));
-  ({inicio: cargarInicio, picks: cargarPicks, goles: () => cargarGoles(), corners: () => cargarCorners(), historial: cargarHistorial, config: cargarConfig})[nombre]?.();
+  ({inicio: cargarInicio, picks: cargarPicks, goles: () => cargarGoles(), corners: () => cargarCorners(), calculadora: cargarCalculadora, historial: cargarHistorial, config: cargarConfig})[nombre]?.();
   window.scrollTo(0, 0);
 }
 document.querySelectorAll("nav button").forEach((b) => b.onclick = () => ir(b.dataset.p));
@@ -386,6 +406,68 @@ async function guardarModelo(tipo, i) {
   const r = await api("/api/guardar", {...c, cuota, casa: $(`#${tipo}-k-${i}`).value || "manual", stake: $(`#${tipo}-s-${i}`).value});
   alert(r.mensaje);
   cargarModelo(tipo);
+}
+
+// ---------- CALCULADORA
+let _calc = null;
+async function cargarCalculadora() {
+  const sel = $("#calc-partido");
+  sel.innerHTML = "<option>Cargando partidos...</option>";
+  const d = await api("/api/partidos?dias=7");
+  if (d.error || !d.partidos.length) { sel.innerHTML = `<option>${esc(d.error || "No hay partidos en los próximos 7 días: actualiza los datos")}</option>`; return; }
+  sel.innerHTML = d.partidos.map((p, i) => `<option value="${i}">${esc(p.dia)} · ${esc(p.local)} – ${esc(p.visitante)} (${esc(p.nombre_liga)})</option>`).join("");
+  window._partidos = d.partidos;
+  sel.onchange = elegirPartido;
+  elegirPartido();
+}
+async function elegirPartido() {
+  const p = window._partidos[$("#calc-partido").value];
+  $("#calc-info").textContent = "Calculando...";
+  _calc = await api(`/api/probs?fecha=${p.fecha}&local=${encodeURIComponent(p.local)}&visitante=${encodeURIComponent(p.visitante)}`);
+  if (_calc.error) { $("#calc-info").textContent = _calc.error; return; }
+  $("#calc-info").innerHTML = `Esperados: <b>${String(_calc.goles).replace(".", ",")} goles</b>` +
+    (_calc.corners ? ` · <b>${String(_calc.corners).replace(".", ",")} córners</b>` : "") +
+    (_calc.avisos.length ? `<br>⚠️ ${esc(_calc.avisos.join(" "))}` : "");
+  $("#calc-mercado").innerHTML = _calc.mercados.map((m, i) =>
+    `<option value="${i}">${esc(m.descripcion)} · ${String(m.prob).replace(".", ",")} % · cuota mínima ${coma(m.cuota_minima)}</option>`).join("");
+  evaluar();
+}
+function evaluar() {
+  const caja = $("#calc-resultado");
+  if (!_calc || _calc.error) { caja.innerHTML = ""; return; }
+  const m = _calc.mercados[$("#calc-mercado").value];
+  const cuota = parseFloat(($("#calc-cuota").value || "").replace(",", "."));
+  let html = `<div class="datos">
+      <div><b>${String(m.prob).replace(".", ",")} %</b><span>Probabilidad (modelo)</span></div>
+      <div><b>${coma(m.cuota_justa)}</b><span>Cuota justa</span></div>
+      <div class="clave"><b>${coma(m.cuota_minima)}</b><span>Cuota mínima</span></div>
+      ${m.mercado_justa ? `<div><b>${coma(m.mercado_justa)}</b><span>Cuota justa del mercado</span></div>` : ""}
+    </div>`;
+  if (cuota > 1) {
+    const valor = (m.prob / 100) * cuota - 1;
+    const euros = _calc.bank * _calc.plano;
+    if (cuota < m.cuota_minima) {
+      html += `<div class="aviso" style="background:var(--mal-suave)"><b class="ko">❌ No apuestes.</b> A ${coma(cuota)} pagan menos de lo que vale (necesitas ${coma(m.cuota_minima)} o más).</div>`;
+    } else if (m.mercado_justa && cuota < m.mercado_justa * 1.01) {
+      html += `<div class="aviso"><b>⚠️ Dudoso.</b> Según nuestro modelo hay valor (+${(100 * valor).toFixed(1).replace(".", ",")} %), pero el mercado lo ve menos probable. En el backtest, este tipo de apuesta perdía dinero.</div>`;
+    } else {
+      const raro = valor > 0.25 ? `<div style="margin-top:8px">⚠️ <b>Valor muy alto.</b> Comprueba que la cuota es de esta misma línea (por ejemplo, "más de 2,5" y no "más de 3,5"). Si lo es, sospecha: puede haber una baja o una noticia que el modelo no conoce.</div>` : "";
+      html += `<div class="aviso" style="background:var(--bien-suave)"><b class="ok">✅ Apuesta.</b> Valor +${(100 * valor).toFixed(1).replace(".", ",")} % · apuesta <b>${euros.toFixed(2).replace(".", ",")} €</b> (stake ${_calc.stake}/10).${raro}
+        <div style="margin-top:10px"><button class="boton" onclick="guardarCalculadora()">✅ La he apostado: guardar</button></div></div>`;
+    }
+  }
+  caja.innerHTML = html;
+}
+$("#calc-mercado").onchange = evaluar;
+$("#calc-cuota").oninput = evaluar;
+async function guardarCalculadora() {
+  const p = window._partidos[$("#calc-partido").value];
+  const m = _calc.mercados[$("#calc-mercado").value];
+  const cuota = parseFloat($("#calc-cuota").value.replace(",", "."));
+  const r = await api("/api/guardar", {fecha: p.fecha, liga: p.liga, local: _calc.local, visitante: _calc.visitante,
+    mercado: m.mercado, familia: m.familia, cuota, cuota_justa: m.cuota_justa, casa: $("#calc-casa").value || "manual",
+    stake_pct: _calc.plano});
+  alert(r.mensaje);
 }
 
 // ---------- HISTORIAL
