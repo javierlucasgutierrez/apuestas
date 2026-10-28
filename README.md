@@ -5,7 +5,7 @@ Herramienta para buscar **apuestas con valor a largo plazo** en las 5 grandes li
 1. **Comparar casas de apuestas** (1X2, más/menos 2,5 goles y **hándicap asiático**): avisa cuando una casa paga más de lo que vale el resultado.
 2. **Estadística propia** (sobre todo córners): calcula la probabilidad de cada línea y te dice la **cuota mínima** que tienes que encontrar en Oddspedia.
 
-Es independiente del resto del repositorio (la app K9 Club). Solo necesita **Python 3.10 o superior**.
+Solo necesita **Python 3.10 o superior**, sin instalar nada más.
 
 ---
 
@@ -14,7 +14,7 @@ Es independiente del resto del repositorio (la app K9 Club). Solo necesita **Pyt
 ### Instalarlo (una sola vez)
 
 1. Instala **Python** desde https://www.python.org/downloads. En Windows, marca la casilla **"Add Python to PATH"** al instalar.
-2. Descarga el proyecto (en GitHub: **Code → Download ZIP**) y descomprímelo donde quieras. Solo necesitas la carpeta `apuestas`.
+2. Descarga el proyecto (en GitHub: **Code → Download ZIP**, o directamente https://github.com/javierlucasgutierrez/apuestas/archive/refs/heads/main.zip), descomprímelo y pon la carpeta donde quieras (por ejemplo, en el Escritorio con el nombre `apuestas`).
 3. Abre una terminal en la carpeta `apuestas` (en Windows, escribe `cmd` en la barra de direcciones de la carpeta y pulsa Enter) y guarda tus preferencias:
 
    ```
