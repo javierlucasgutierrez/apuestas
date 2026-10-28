@@ -9,7 +9,24 @@ Solo necesita **Python 3.10 o superior**, sin instalar nada más.
 
 ---
 
-## Uso diario en tu ordenador
+## 🖱️ La forma fácil: el panel (sin comandos)
+
+Haz **doble clic en `Abrir panel.bat`** (en Mac, `Abrir panel.command`). Se abre una ventana negra (déjala abierta) y el **panel en tu navegador**, con estas pestañas:
+
+| Pestaña | Para qué |
+|---|---|
+| 🏠 **Inicio** | Botón **Actualizar ahora**: baja los resultados reales, los próximos partidos y liquida tus picks. Botón **Mejorar el modelo**, una vez al mes. |
+| 🎯 **Picks** | Los picks del sistema, con la cuota mínima y cuánto apostar. Si apuestas uno, escribe la cuota que conseguiste y pulsa **Guardar**. Botón **Copiar texto para publicar**. |
+| 🚩 **Córners** | Los córners que vale la pena mirar, con su probabilidad y su cuota mínima. También se guardan con un botón. |
+| 📊 **Mi historial** | Aciertos, unidades, yield, CLV, rachas, por mes y por mercado, y la lista de todos tus picks. |
+| ⚙️ **Configuración** | Tu bank, estilo de apuestas, cuánto apostar, ligas y clave de cuotas en vivo. |
+| ❓ **Cómo funciona** | La explicación en sencillo. |
+
+El panel funciona **solo en tu ordenador** (nadie más puede verlo). Para cerrarlo, cierra la ventana negra.
+
+---
+
+## Uso diario en tu ordenador (con comandos, para quien lo prefiera)
 
 ### Instalarlo (una sola vez)
 
@@ -326,6 +343,7 @@ python -m unittest discover -s tests
 
 - `app.py`: la aplicación.
 - `ajustes.json`: ajustes y corrección calculados por `optimizar`.
+- `Abrir panel.bat` / `Abrir panel.command`, `panel.py` y `panel.html`: el panel con botones en el navegador.
 - `jornada.bat` / `jornada.command`: lo de cada jornada, con doble clic. `informe.bat`: tu historial.
 - `predictor/registro.py`: registro de picks (base de datos local), liquidación automática y estadísticas.
 - `predictor/sistema.py`: perfiles del sistema, importe de cada apuesta y simulación del bank.

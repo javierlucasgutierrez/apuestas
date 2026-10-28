@@ -1,0 +1,363 @@
+"""Panel con botones en el navegador: todo el programa sin escribir comandos.
+
+Se abre con doble clic en "Abrir panel.bat" (Windows) o "Abrir panel.command" (Mac).
+Funciona solo en tu ordenador: la página se sirve en 127.0.0.1 y nadie más puede verla.
+"""
+
+import json
+import os
+import subprocess
+import sys
+import threading
+import webbrowser
+from datetime import date, datetime, timedelta
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
+
+import app as cli
+from predictor.cuotas import seleccionar
+from predictor.cuotas_vivo import archivo_proximos
+from predictor.datos import cargar_csv, cargar_varios
+from predictor.descargar import GRANDES
+from predictor.mercados import Ajustes, Predictor
+from predictor.registro import Registro, descripcion, resumir, stake_10
+from predictor.sistema import PERFILES, apuestas_del_sistema, stake
+from predictor.valor import CASAS, Oportunidad, leer_filas
+
+PUERTO = 8765
+PREFERENCIAS_POR_DEFECTO = {"bank": 50.0, "perfil": "cuotas_cortas", "metodo": "plano", "plano": 0.01,
+                            "kelly": 0.25, "tope": 0.03, "ligas": ["todas"], "casas": ["Max"], "dias": 3}
+
+
+# ------------------------------------------------------------------ utilidades
+DIAS = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
+
+
+def dia(fecha: date) -> str:
+    return f"{DIAS[fecha.weekday()]} {fecha:%d/%m}"
+
+
+def preferencias() -> dict:
+    return {**PREFERENCIAS_POR_DEFECTO, **cli.leer_preferencias()}
+
+
+def guardar_preferencias(prefs: dict) -> None:
+    with open(cli.PREFERENCIAS, "w", encoding="utf-8") as f:
+        json.dump(prefs, f, indent=2, ensure_ascii=False)
+
+
+def hay_datos() -> bool:
+    return os.path.isdir(cli.DESCARGAS) and any(f.endswith(".csv") and not f.startswith("proximos")
+                                                 for f in os.listdir(cli.DESCARGAS))
+
+
+def ultima_actualizacion() -> str | None:
+    ruta = os.path.join(cli.DESCARGAS, "proximos.csv")
+    if not os.path.exists(ruta):
+        return None
+    return datetime.fromtimestamp(os.path.getmtime(ruta)).strftime("%d/%m/%Y %H:%M")
+
+
+_cache = {"clave": None, "predictor": None}
+_cerrojo = threading.Lock()
+
+
+def predictor() -> Predictor:
+    """El modelo ajustado con los datos descargados (se recalcula solo si cambian los datos)."""
+    archivos = sorted(os.listdir(cli.DESCARGAS))
+    clave = tuple((f, os.path.getmtime(os.path.join(cli.DESCARGAS, f))) for f in archivos)
+    clave += ((os.path.getmtime(cli.AJUSTES) if os.path.exists(cli.AJUSTES) else 0),)
+    with _cerrojo:
+        if _cache["clave"] != clave:
+            partidos = cargar_varios([cli.DESCARGAS])
+            _cache["predictor"] = Predictor(Ajustes.cargar(cli.AJUSTES)).ajustar(partidos)
+            _cache["clave"] = clave
+        return _cache["predictor"]
+
+
+def ya_guardado(registro: Registro, fecha: date, local: str, visitante: str, mercado: str) -> bool:
+    return bool(registro.picks("fecha_partido = ? AND local = ? AND visitante = ? AND mercado = ?",
+                               (fecha.isoformat(), local, visitante, mercado)))
+
+
+def pct_stake(o: Oportunidad, prefs: dict) -> float:
+    return stake(o, prefs["metodo"], fraccion_kelly=prefs["kelly"], tope=prefs["tope"], plano=prefs["plano"])
+
+
+# ------------------------------------------------------------------ datos para la página
+def datos_inicio() -> dict:
+    prefs = preferencias()
+    registro = Registro(cli.BASE_DATOS)
+    picks = registro.picks()
+    registro.cerrar()
+    total, _, _ = resumir(picks)
+    return {
+        "hay_datos": hay_datos(), "actualizado": ultima_actualizacion(), "bank": prefs["bank"],
+        "perfil": prefs["perfil"], "pendientes": sum(p.estado == "pendiente" for p in picks),
+        "liquidados": total.picks, "unidades": round(total.unidades, 2), "yield": round(total.yield_pct, 1),
+        "clave_odds": bool(cli.clave_odds()),
+    }
+
+
+def datos_picks(dias: int) -> dict:
+    prefs = preferencias()
+    hoy = date.today()
+    filas = [f for f in leer_filas([archivo_proximos(cli.DESCARGAS)]) if not f.get("FTHG")]
+    elegidas = [o for _, o in apuestas_del_sistema(filas, prefs["perfil"], prefs["casas"])
+                if hoy <= o.fecha <= hoy + timedelta(days=dias)]
+    registro = Registro(cli.BASE_DATOS)
+    lista = []
+    for o in elegidas:
+        p = pct_stake(o, prefs)
+        lista.append({
+            "fecha": o.fecha.isoformat(), "dia": dia(o.fecha), "liga": o.liga,
+            "nombre_liga": cli.NOMBRE_LIGA.get(o.liga, o.liga), "local": o.local, "visitante": o.visitante,
+            "mercado": o.mercado, "familia": o.familia, "descripcion": descripcion(o),
+            "casa": CASAS.get(o.casa, o.casa), "cuota": o.cuota, "cuota_justa": round(o.cuota_justa, 2),
+            "cuota_minima": round(o.cuota_justa * 1.02, 2), "valor": round(100 * o.valor, 1),
+            "stake_pct": p, "euros": round(prefs["bank"] * p, 2), "stake": stake_10(p, prefs["tope"]),
+            "guardado": ya_guardado(registro, o.fecha, o.local, o.visitante, o.mercado),
+        })
+    registro.cerrar()
+    return {"picks": lista, "perfil": prefs["perfil"], "bank": prefs["bank"], "actualizado": ultima_actualizacion()}
+
+
+def datos_corners(dias: int) -> dict:
+    prefs = preferencias()
+    hoy = date.today()
+    modelo = predictor()
+    proximos = cargar_csv(os.path.join(cli.DESCARGAS, "proximos.csv"))
+    registro = Registro(cli.BASE_DATOS)
+    lista = []
+    for p in proximos:
+        if p.jugado or not hoy <= p.fecha <= hoy + timedelta(days=dias):
+            continue
+        try:
+            pred = modelo.predecir(p.local, p.visitante, fecha=p.fecha)
+        except KeyError:
+            continue
+        if pred.avisos or pred.corners_local is None:
+            continue
+        for s in seleccionar(pred.probs, None, cuota_min=1.50, umbral=0.05, prob_minima=0.55):
+            if not s.mercado.startswith("Córners") or s.cuota_minima > s.cuota_justa * 1.10:
+                continue
+            lista.append({
+                "fecha": p.fecha.isoformat(), "dia": dia(p.fecha), "liga": p.liga,
+                "nombre_liga": cli.NOMBRE_LIGA.get(p.liga, p.liga), "local": pred.local,
+                "visitante": pred.visitante, "mercado": s.mercado,
+                "descripcion": descripcion(Oportunidad(p.fecha, p.liga, pred.local, pred.visitante, s.mercado,
+                                                       "", 0, 0, "")),
+                "prob": round(100 * s.prob), "cuota_justa": round(s.cuota_justa, 2),
+                "cuota_minima": round(s.cuota_minima, 2),
+                "esperados": round(pred.corners_local + pred.corners_visitante, 1),
+                "guardado": ya_guardado(registro, p.fecha, pred.local, pred.visitante, s.mercado),
+            })
+    registro.cerrar()
+    # Una sola línea por partido: la más probable de las que pasan el filtro.
+    mejores: dict = {}
+    for c in lista:
+        clave = (c["fecha"], c["local"], c["visitante"])
+        if clave not in mejores or c["guardado"] or (c["prob"] > mejores[clave]["prob"]
+                                                     and not mejores[clave]["guardado"]):
+            mejores[clave] = c
+    lista = sorted(mejores.values(), key=lambda x: -x["prob"])
+    stake_sugerido = max(1, stake_10(prefs["plano"], prefs["tope"]) - 1)
+    return {"corners": lista[:30], "stake_sugerido": stake_sugerido}
+
+
+def datos_historial() -> dict:
+    registro = Registro(cli.BASE_DATOS)
+    picks = registro.picks()
+    registro.cerrar()
+    total, por_mes, por_familia = resumir(picks)
+
+    def resumen(r):
+        return {"picks": r.picks, "acierto": round(r.acierto_pct), "cuota": round(r.cuota_media, 2),
+                "unidades": round(r.unidades, 2), "yield": round(r.yield_pct, 1),
+                "clv": None if r.clv_pct is None else round(r.clv_pct, 1)}
+
+    liquidados = [p for p in picks if p.unidades is not None]
+    semanas: dict = {}
+    for p in liquidados:
+        clave = p.fecha_partido.isocalendar()[:2]
+        semanas[clave] = semanas.get(clave, 0.0) + p.unidades
+    return {
+        "total": resumen(total),
+        "por_mes": [{"mes": m, **resumen(r)} for m, r in sorted(por_mes.items(), reverse=True)],
+        "por_mercado": [{"mercado": m, **resumen(r)} for m, r in sorted(por_familia.items())],
+        "racha_picks": cli.peor_racha([p.unidades for p in liquidados]),
+        "semanas_pos": sum(v > 0 for v in semanas.values()), "semanas_neg": sum(v < 0 for v in semanas.values()),
+        "racha_semanas": cli.peor_racha([semanas[k] for k in sorted(semanas)]),
+        "picks": [{"id": p.id, "fecha": p.fecha_partido.strftime("%d/%m/%Y"), "partido": f"{p.local} - {p.visitante}",
+                   "apuesta": descripcion(p), "casa": CASAS.get(p.casa, p.casa), "cuota": p.cuota, "stake": p.stake,
+                   "estado": p.estado, "unidades": None if p.unidades is None else round(p.unidades, 2),
+                   "publicado": p.publicado} for p in reversed(picks[-300:])],
+    }
+
+
+def guardar_pick(d: dict) -> dict:
+    prefs = preferencias()
+    fecha = date.fromisoformat(d["fecha"])
+    cuota = float(str(d["cuota"]).replace(",", "."))
+    if cuota <= 1:
+        return {"ok": False, "mensaje": "La cuota tiene que ser mayor que 1."}
+    justa = float(d.get("cuota_justa") or cuota)
+    o = Oportunidad(fecha, d.get("liga", ""), d["local"], d["visitante"], d["mercado"], d.get("casa") or "manual",
+                    cuota, 1 / justa, "manual", familia=d.get("familia") or "Córners")
+    if d.get("stake"):  # stake 1-10 elegido a mano
+        pct = int(d["stake"]) * prefs["tope"] / 10
+    else:
+        pct = float(d.get("stake_pct") or prefs["plano"])
+    registro = Registro(cli.BASE_DATOS)
+    nuevo = registro.guardar(o, pct, prefs["perfil"] if d.get("familia") != "Córners" else "manual", prefs["tope"])
+    registro.cerrar()
+    return {"ok": True, "mensaje": "Guardado en tu historial." if nuevo else "Ya estaba guardado."}
+
+
+def texto_publicar() -> dict:
+    registro = Registro(cli.BASE_DATOS)
+    nuevos = [p for p in registro.pendientes() if not p.publicado]
+    partes = []
+    for p in nuevos:
+        liga = cli.NOMBRE_LIGA.get(p.liga, p.liga)
+        texto = (f"⚽ {p.local} - {p.visitante} · {liga} · {p.fecha_partido:%d/%m}\n➡️ {descripcion(p)}\n"
+                 f"💰 Cuota {p.cuota:.2f} ({CASAS.get(p.casa, p.casa)})\n📊 Stake {p.stake}/10")
+        if p.cuota_justa and p.cuota_justa * 1.02 < p.cuota:
+            texto += f"\n🔻 No apostar por debajo de {p.cuota_justa * 1.02:.2f}"
+        partes.append(texto)
+    if nuevos:
+        registro.marcar_publicados([p.id for p in nuevos])
+        os.makedirs(cli.PUBLICAR, exist_ok=True)
+        with open(os.path.join(cli.PUBLICAR, f"{date.today():%Y-%m-%d}.txt"), "a", encoding="utf-8") as f:
+            f.write("\n\n".join(partes) + "\n\n")
+    registro.cerrar()
+    return {"texto": "\n\n".join(partes), "cuantos": len(nuevos)}
+
+
+def guardar_config(d: dict) -> dict:
+    prefs = cli.leer_preferencias()
+    try:
+        prefs["bank"] = round(float(str(d["bank"]).replace(",", ".")), 2)
+        prefs["perfil"] = d["perfil"] if d["perfil"] in PERFILES else "cuotas_cortas"
+        prefs["metodo"] = "kelly" if d["metodo"] == "kelly" else "plano"
+        prefs["plano"] = min(max(float(str(d["plano"]).replace(",", ".")) / 100, 0.002), 0.03)
+        prefs["ligas"] = ["todas"] if d["ligas"] == "todas" else GRANDES
+        prefs.setdefault("casas", ["Max"])
+        if d.get("clave_odds"):
+            prefs["clave_odds"] = d["clave_odds"].strip()
+        elif d.get("borrar_clave"):
+            prefs.pop("clave_odds", None)
+    except (KeyError, ValueError):
+        return {"ok": False, "mensaje": "Revisa los datos: el bank y el porcentaje tienen que ser números."}
+    guardar_preferencias(prefs)
+    return {"ok": True, "mensaje": "Configuración guardada."}
+
+
+# ------------------------------------------------------------------ tareas largas (actualizar, optimizar)
+_tarea = {"activa": False, "nombre": "", "log": [], "terminada": None}
+
+
+def lanzar_tarea(nombre: str) -> dict:
+    if _tarea["activa"]:
+        return {"ok": False, "mensaje": "Ya hay una tarea en marcha. Espera a que termine."}
+    orden = {"actualizar": ["actualizar"], "optimizar": ["optimizar"]}.get(nombre)
+    if not orden:
+        return {"ok": False, "mensaje": "Tarea desconocida."}
+    _tarea.update(activa=True, nombre=nombre, log=[], terminada=None)
+
+    def correr():
+        entorno = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
+        proceso = subprocess.Popen([sys.executable, "-u", os.path.join(cli.CARPETA, "app.py"), *orden],
+                                   cwd=cli.CARPETA, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                   text=True, encoding="utf-8", errors="replace", env=entorno)
+        for linea in proceso.stdout:
+            _tarea["log"].append(linea.rstrip())
+        proceso.wait()
+        _tarea["log"].append("✅ Terminado." if proceso.returncode == 0 else "❌ Algo ha fallado (mira las líneas de arriba).")
+        _tarea.update(activa=False, terminada=datetime.now().strftime("%H:%M"))
+
+    threading.Thread(target=correr, daemon=True).start()
+    return {"ok": True}
+
+
+# ------------------------------------------------------------------ servidor
+class Manejador(BaseHTTPRequestHandler):
+    def log_message(self, *args):  # sin ruido en la ventana
+        pass
+
+    def _responder(self, cuerpo, tipo="application/json; charset=utf-8", codigo=200):
+        datos = cuerpo if isinstance(cuerpo, bytes) else json.dumps(cuerpo, ensure_ascii=False).encode("utf-8")
+        self.send_response(codigo)
+        self.send_header("Content-Type", tipo)
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(datos)
+
+    def do_GET(self):
+        url = urlparse(self.path)
+        q = parse_qs(url.query)
+        dias = int(q.get("dias", ["3"])[0])
+        try:
+            if url.path == "/":
+                with open(os.path.join(cli.CARPETA, "panel.html"), "rb") as f:
+                    return self._responder(f.read(), "text/html; charset=utf-8")
+            if url.path == "/api/inicio":
+                return self._responder(datos_inicio())
+            if url.path == "/api/config":
+                prefs = preferencias()
+                prefs["clave_odds"] = bool(prefs.get("clave_odds"))
+                return self._responder(prefs)
+            if url.path == "/api/tarea":
+                return self._responder(_tarea)
+            if not hay_datos():
+                return self._responder({"error": "Primero pulsa «Actualizar datos» en Inicio."})
+            if url.path == "/api/picks":
+                return self._responder(datos_picks(dias))
+            if url.path == "/api/corners":
+                return self._responder(datos_corners(dias))
+            if url.path == "/api/historial":
+                return self._responder(datos_historial())
+            self._responder({"error": "No encontrado"}, codigo=404)
+        except Exception as e:  # noqa: BLE001 - se enseña el error en la página
+            self._responder({"error": f"{type(e).__name__}: {e}"}, codigo=500)
+
+    def do_POST(self):
+        largo = int(self.headers.get("Content-Length", 0))
+        datos = json.loads(self.rfile.read(largo) or b"{}")
+        try:
+            ruta = urlparse(self.path).path
+            if ruta == "/api/guardar":
+                return self._responder(guardar_pick(datos))
+            if ruta == "/api/publicar":
+                return self._responder(texto_publicar())
+            if ruta == "/api/config":
+                return self._responder(guardar_config(datos))
+            if ruta == "/api/tarea":
+                return self._responder(lanzar_tarea(datos.get("nombre", "")))
+            self._responder({"error": "No encontrado"}, codigo=404)
+        except Exception as e:  # noqa: BLE001
+            self._responder({"ok": False, "mensaje": f"Error: {e}"}, codigo=500)
+
+
+def main() -> None:
+    for puerto in range(PUERTO, PUERTO + 20):
+        try:
+            servidor = ThreadingHTTPServer(("127.0.0.1", puerto), Manejador)
+            break
+        except OSError:
+            continue
+    else:
+        sys.exit("No hay ningún puerto libre para abrir el panel.")
+    url = f"http://127.0.0.1:{puerto}/"
+    print(f"Panel abierto en {url}")
+    print("Deja esta ventana abierta mientras usas el panel. Para cerrarlo, cierra esta ventana.")
+    if "--sin-navegador" not in sys.argv:
+        webbrowser.open(url)
+    try:
+        servidor.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()

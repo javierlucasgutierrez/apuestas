@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel de apuestas</title>
+<style>
+  :root {
+    --fondo: #f4f5f7; --tarjeta: #ffffff; --texto: #1d2330; --suave: #636b7a; --borde: #e2e5ea;
+    --marca: #1f6feb; --marca-suave: #e8f0fe; --bien: #1a7f37; --bien-suave: #e6f4ea;
+    --mal: #c62828; --mal-suave: #fdecea; --aviso: #9a6700; --aviso-suave: #fff6dd;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fondo: #0f1218; --tarjeta: #181c24; --texto: #e7e9ee; --suave: #9aa3b2; --borde: #2a303c;
+      --marca: #5b9bff; --marca-suave: #1b2a44; --bien: #4cc76d; --bien-suave: #16301f;
+      --mal: #ff6b6b; --mal-suave: #3a1c1c; --aviso: #e3b341; --aviso-suave: #352a10;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fondo); color: var(--texto);
+         font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { background: var(--tarjeta); border-bottom: 1px solid var(--borde); position: sticky; top: 0; z-index: 5; }
+  .cabecera { max-width: 1000px; margin: 0 auto; padding: 14px 16px 0; }
+  h1 { font-size: 20px; margin: 0 0 10px; }
+  nav { display: flex; gap: 4px; overflow-x: auto; }
+  nav button { border: 0; background: none; color: var(--suave); padding: 10px 14px; font-size: 15px;
+               border-bottom: 3px solid transparent; cursor: pointer; white-space: nowrap; }
+  nav button.activa { color: var(--marca); border-bottom-color: var(--marca); font-weight: 600; }
+  main { max-width: 1000px; margin: 0 auto; padding: 20px 16px 60px; }
+  section { display: none; } section.activa { display: block; }
+  h2 { font-size: 18px; margin: 0 0 12px; }
+  p.ayuda { color: var(--suave); margin: 0 0 16px; }
+  .tarjeta { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  .fila { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .cifra { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 12px; padding: 14px; }
+  .cifra .n { font-size: 24px; font-weight: 700; } .cifra .t { color: var(--suave); font-size: 13px; }
+  button.boton { background: var(--marca); color: #fff; border: 0; border-radius: 10px; padding: 12px 18px;
+                 font-size: 16px; font-weight: 600; cursor: pointer; }
+  button.boton.secundario { background: var(--marca-suave); color: var(--marca); }
+  button.boton:disabled { opacity: .5; cursor: default; }
+  .pick .partido { font-weight: 700; font-size: 17px; }
+  .pick .meta { color: var(--suave); font-size: 14px; }
+  .pick .apuesta { font-size: 18px; margin: 8px 0; }
+  .etiqueta { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 13px; font-weight: 600; }
+  .e-azul { background: var(--marca-suave); color: var(--marca); }
+  .e-verde { background: var(--bien-suave); color: var(--bien); }
+  .e-rojo { background: var(--mal-suave); color: var(--mal); }
+  .e-amarillo { background: var(--aviso-suave); color: var(--aviso); }
+  .datos { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin: 10px 0; }
+  .datos div { background: var(--fondo); border-radius: 8px; padding: 8px 10px; }
+  .datos b { display: block; font-size: 17px; } .datos span { color: var(--suave); font-size: 12px; }
+  .datos .clave { outline: 2px solid var(--marca); }
+  input, select { font: inherit; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--borde);
+                  background: var(--tarjeta); color: var(--texto); }
+  input.pequeno { width: 90px; }
+  label { display: block; font-weight: 600; margin: 14px 0 4px; }
+  label small { display: block; font-weight: 400; color: var(--suave); }
+  pre.log { background: #0d1117; color: #c9d1d9; border-radius: 10px; padding: 12px; max-height: 320px;
+            overflow: auto; font-size: 13px; white-space: pre-wrap; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--borde); }
+  th { color: var(--suave); font-weight: 600; } td.num, th.num { text-align: right; }
+  .tabla { overflow-x: auto; }
+  .aviso { background: var(--aviso-suave); color: var(--texto); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
+  .vacio { text-align: center; color: var(--suave); padding: 30px 10px; }
+  textarea { width: 100%; min-height: 220px; font: 14px/1.4 inherit; padding: 10px; border-radius: 10px;
+             border: 1px solid var(--borde); background: var(--tarjeta); color: var(--texto); }
+  .ok { color: var(--bien); font-weight: 600; } .ko { color: var(--mal); font-weight: 600; }
+</style>
+</head>
+<body>
+<header><div class="cabecera">
+  <h1>⚽ Panel de apuestas de valor</h1>
+  <nav>
+    <button data-p="inicio" class="activa">🏠 Inicio</button>
+    <button data-p="picks">🎯 Picks</button>
+    <button data-p="corners">🚩 Córners</button>
+    <button data-p="historial">📊 Mi historial</button>
+    <button data-p="config">⚙️ Configuración</button>
+    <button data-p="ayuda">❓ Cómo funciona</button>
+  </nav>
+</div></header>
+
+<main>
+<!-- INICIO -->
+<section id="inicio" class="activa">
+  <div id="inicio-aviso"></div>
+  <div class="cifras" id="inicio-cifras"></div>
+  <div class="tarjeta">
+    <h2>1. Actualizar datos y resultados</h2>
+    <p class="ayuda">Baja los resultados reales de los partidos jugados, los próximos partidos con sus cuotas y liquida tus picks. Hazlo antes de mirar los picks (viernes o sábado) y el lunes.</p>
+    <div class="fila">
+      <button class="boton" id="btn-actualizar">🔄 Actualizar ahora</button>
+      <span id="actualizado" class="ayuda"></span>
+    </div>
+    <pre class="log" id="log" hidden></pre>
+  </div>
+  <div class="tarjeta">
+    <h2>2. Mirar los picks</h2>
+    <p class="ayuda">Ve a <b>🎯 Picks</b>. Para cada uno, búscalo en Oddspedia y apuesta solo si encuentras la <b>cuota mínima</b> o más.</p>
+    <button class="boton secundario" onclick="ir('picks')">Ver los picks →</button>
+  </div>
+  <div class="tarjeta">
+    <h2>Una vez al mes</h2>
+    <p class="ayuda">Pon tu bank actualizado en ⚙️ Configuración y pulsa aquí para que el modelo aprenda de los datos nuevos (tarda unos minutos).</p>
+    <button class="boton secundario" id="btn-optimizar">🧠 Mejorar el modelo</button>
+  </div>
+</section>
+
+<!-- PICKS -->
+<section id="picks">
+  <h2>🎯 Picks del sistema</h2>
+  <p class="ayuda">Apuestas en las que una casa paga más que el precio justo del mercado. <b>Apuesta solo si encuentras la cuota mínima o más</b> en alguna de tus casas.</p>
+  <div class="fila" style="margin-bottom:14px">
+    <label style="margin:0">Mostrar los próximos
+      <select id="picks-dias"><option value="1">1 día</option><option value="2">2 días</option><option value="3" selected>3 días</option><option value="7">7 días</option></select>
+    </label>
+    <button class="boton secundario" id="btn-publicar">📋 Copiar texto para publicar</button>
+  </div>
+  <div id="picks-lista"></div>
+  <div class="tarjeta" id="publicar-caja" hidden>
+    <h2>Texto para publicar</h2>
+    <p class="ayuda">Ya está copiado: pégalo donde publiques tus picks. También se ha guardado en la carpeta <i>datos/publicar</i>.</p>
+    <textarea id="publicar-texto" readonly></textarea>
+  </div>
+</section>
+
+<!-- CÓRNERS -->
+<section id="corners">
+  <h2>🚩 Córners para mirar</h2>
+  <div class="aviso">Los córners salen de nuestro modelo estadístico y están <b>en prueba</b>: apuesta poco (stake 1–3) y solo si la cuota llega a la mínima. Si apuestas uno, guárdalo para que entre en tu historial.</div>
+  <div class="fila" style="margin-bottom:14px">
+    <label style="margin:0">Mostrar los próximos
+      <select id="corners-dias"><option value="1">1 día</option><option value="2">2 días</option><option value="3" selected>3 días</option><option value="7">7 días</option></select>
+    </label>
+  </div>
+  <div id="corners-lista"></div>
+</section>
+
+<!-- HISTORIAL -->
+<section id="historial">
+  <h2>📊 Mi historial</h2>
+  <p class="ayuda">Todos tus picks guardados. Se liquidan solos al pulsar «Actualizar» cuando ya se han jugado. Nada se borra.</p>
+  <div class="cifras" id="hist-cifras"></div>
+  <div class="tarjeta"><h2>Por mes</h2><div class="tabla" id="hist-mes"></div></div>
+  <div class="tarjeta"><h2>Por mercado</h2><div class="tabla" id="hist-mercado"></div></div>
+  <div class="tarjeta"><h2>Todos los picks</h2><div class="tabla" id="hist-picks"></div></div>
+</section>
+
+<!-- CONFIG -->
+<section id="config">
+  <h2>⚙️ Configuración</h2>
+  <div class="tarjeta">
+    <label>Tu bank (€)<small>El dinero total que tienes para apostar, sumando todas tus casas. Actualízalo cada mes.</small></label>
+    <input id="c-bank" type="number" step="0.01" min="1">
+
+    <label>Estilo de apuestas</label>
+    <select id="c-perfil">
+      <option value="cuotas_cortas">Cuotas cortas (1,60–2,10) · se acierta la mitad · recomendado</option>
+      <option value="equilibrado">Equilibrado (1,50–5) · más apuestas, se acierta 1 de 3</option>
+      <option value="conservador">Conservador · menos apuestas, más valor por apuesta</option>
+      <option value="volumen">Volumen · el máximo de apuestas</option>
+    </select>
+
+    <label>Cuánto apostar en cada pick</label>
+    <select id="c-metodo">
+      <option value="plano">Siempre el mismo % del bank (recomendado con cuotas cortas)</option>
+      <option value="kelly">Según el valor de cada pick (recomendado con equilibrado)</option>
+    </select>
+    <div id="c-plano-caja">
+      <label>% del bank por apuesta<small>1 % es lo recomendado. Más de 2 % hace los bajones mucho más fuertes.</small></label>
+      <input id="c-plano" type="number" step="0.1" min="0.2" max="3" class="pequeno"> %
+    </div>
+
+    <label>Ligas</label>
+    <select id="c-ligas">
+      <option value="todas">Las 20 ligas (más oportunidades)</option>
+      <option value="grandes">Solo las 5 grandes</option>
+    </select>
+
+    <label>Clave de The Odds API (opcional)<small>Para tener las cuotas del momento. Se consigue gratis en the-odds-api.com. Se guarda solo en tu ordenador.</small></label>
+    <input id="c-clave" type="password" placeholder="Pega aquí tu clave" style="width:100%;max-width:420px">
+    <div id="c-clave-estado" class="ayuda" style="margin-top:6px"></div>
+
+    <div style="margin-top:20px" class="fila">
+      <button class="boton" id="btn-guardar-config">💾 Guardar</button>
+      <span id="c-mensaje"></span>
+    </div>
+  </div>
+</section>
+
+<!-- AYUDA -->
+<section id="ayuda">
+  <h2>❓ Cómo funciona, en sencillo</h2>
+  <div class="tarjeta">
+    <h2>La idea</h2>
+    <p>Las casas "profesionales" (Pinnacle, la bolsa de Betfair) marcan el <b>precio justo</b> de cada resultado. Cuando otra casa paga <b>más</b> que ese precio, hay <b>valor</b>: a la larga, apostar ahí gana dinero aunque se pierdan apuestas sueltas.</p>
+  </div>
+  <div class="tarjeta">
+    <h2>Qué significa cada número</h2>
+    <p><b>Cuota del pick</b>: la mejor cuota que se ha encontrado.<br>
+       <b>Cuota justa</b>: lo que debería pagar según el precio justo.<br>
+       <b>Cuota mínima</b>: la justa + 2 %. <b>Por debajo de esta, no se apuesta.</b><br>
+       <b>Valor</b>: cuánto se gana de media por cada euro a la larga.<br>
+       <b>Stake</b>: cuánto apostar, del 1 al 10 (10 = 3 % del bank).</p>
+  </div>
+  <div class="tarjeta">
+    <h2>Hándicap asiático</h2>
+    <p><b>Equipo −0,5</b>: tiene que ganar. <b>Equipo +0,5</b>: vale ganar o empatar.<br>
+       <b>Equipo 0</b>: si empata te devuelven el dinero. <b>Equipo −0,25</b>: si empata pierdes la mitad.<br>
+       <b>Equipo +0,25</b>: si empata ganas la mitad.</p>
+  </div>
+  <div class="tarjeta">
+    <h2>Lo que hay que tener claro</h2>
+    <p>Habrá rachas de fallos y semanas en negativo: es normal y no se cambia nada. Cuantas más casas tengas, más veces encontrarás la cuota mínima. Apuesta solo dinero que te puedas permitir perder. Si deja de ser un extra controlado: <b>jugarbien.es · 900 200 225</b> (gratuito).</p>
+  </div>
+</section>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const euros = (x) => x.toLocaleString("es-ES", {minimumFractionDigits: 2, maximumFractionDigits: 2}) + " €";
+const coma = (x) => Number(x).toLocaleString("es-ES", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+
+async function api(ruta, datos) {
+  const opciones = datos ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(datos)} : {};
+  const r = await fetch(ruta, opciones);
+  return r.json();
+}
+
+function ir(nombre) {
+  document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("activa", b.dataset.p === nombre));
+  document.querySelectorAll("section").forEach((s) => s.classList.toggle("activa", s.id === nombre));
+  ({inicio: cargarInicio, picks: cargarPicks, corners: cargarCorners, historial: cargarHistorial, config: cargarConfig})[nombre]?.();
+  window.scrollTo(0, 0);
+}
+document.querySelectorAll("nav button").forEach((b) => b.onclick = () => ir(b.dataset.p));
+
+// ---------- INICIO
+async function cargarInicio() {
+  const d = await api("/api/inicio");
+  $("#inicio-aviso").innerHTML = d.hay_datos ? "" :
+    '<div class="aviso">👋 Es la primera vez: pulsa <b>Actualizar ahora</b> para descargar los datos (tarda 2–3 minutos).</div>';
+  $("#actualizado").textContent = d.actualizado ? "Última actualización: " + d.actualizado : "Todavía sin datos";
+  $("#inicio-cifras").innerHTML = `
+    <div class="cifra"><div class="n">${euros(d.bank)}</div><div class="t">Tu bank</div></div>
+    <div class="cifra"><div class="n">${d.pendientes}</div><div class="t">Picks pendientes de jugarse</div></div>
+    <div class="cifra"><div class="n">${d.liquidados}</div><div class="t">Picks ya liquidados</div></div>
+    <div class="cifra"><div class="n ${d.unidades >= 0 ? "ok" : "ko"}">${d.unidades >= 0 ? "+" : ""}${coma(d.unidades)} u</div><div class="t">Unidades ganadas (yield ${d.yield} %)</div></div>`;
+}
+
+async function tarea(nombre) {
+  const r = await api("/api/tarea", {nombre});
+  if (!r.ok) { alert(r.mensaje); return; }
+  $("#log").hidden = false;
+  $("#btn-actualizar").disabled = $("#btn-optimizar").disabled = true;
+  const vigilar = setInterval(async () => {
+    const t = await api("/api/tarea");
+    $("#log").textContent = t.log.join("\n") || "Empezando...";
+    $("#log").scrollTop = $("#log").scrollHeight;
+    if (!t.activa) {
+      clearInterval(vigilar);
+      $("#btn-actualizar").disabled = $("#btn-optimizar").disabled = false;
+      cargarInicio();
+    }
+  }, 1000);
+}
+$("#btn-actualizar").onclick = () => tarea("actualizar");
+$("#btn-optimizar").onclick = () => { if (confirm("Tarda unos minutos. ¿Empezar?")) tarea("optimizar"); };
+
+// ---------- PICKS
+async function cargarPicks() {
+  const caja = $("#picks-lista");
+  caja.innerHTML = '<div class="vacio">Buscando picks...</div>';
+  const d = await api("/api/picks?dias=" + $("#picks-dias").value);
+  if (d.error) { caja.innerHTML = `<div class="vacio">${esc(d.error)}</div>`; return; }
+  if (!d.picks.length) {
+    caja.innerHTML = `<div class="tarjeta vacio">Ningún pick ahora mismo.<br>Los partidos del fin de semana suelen publicarse el jueves o el viernes: pulsa <b>Actualizar</b> en Inicio y vuelve aquí.<br><br>No apostar también es una decisión correcta.</div>`;
+    return;
+  }
+  caja.innerHTML = d.picks.map((p, i) => `
+    <div class="tarjeta pick">
+      <div class="fila" style="justify-content:space-between">
+        <div><div class="partido">${esc(p.local)} – ${esc(p.visitante)}</div>
+             <div class="meta">${esc(p.dia)} · ${esc(p.nombre_liga)}</div></div>
+        <span class="etiqueta e-azul">${esc(p.familia)}</span>
+      </div>
+      <div class="apuesta">➡️ <b>${esc(p.descripcion)}</b></div>
+      <div class="datos">
+        <div><b>${coma(p.cuota)}</b><span>${p.casa === "mejor cuota del mercado" ? "Mejor cuota del mercado" : "Mejor cuota (" + esc(p.casa) + ")"}</span></div>
+        <div class="clave"><b>${coma(p.cuota_minima)}</b><span>Cuota mínima</span></div>
+        <div><b>${coma(p.cuota_justa)}</b><span>Cuota justa</span></div>
+        <div><b>+${coma(p.valor)} %</b><span>Valor</span></div>
+        <div><b>${euros(p.euros)}</b><span>Apostar (stake ${p.stake}/10)</span></div>
+      </div>
+      ${p.guardado ? '<span class="etiqueta e-verde">✅ Guardado en tu historial</span>' : `
+      <div class="fila">
+        <span>¿La has apostado? Cuota conseguida:</span>
+        <input class="pequeno" id="pc-${i}" value="${p.cuota}" inputmode="decimal">
+        <input class="pequeno" id="pk-${i}" placeholder="Casa" style="width:120px">
+        <button class="boton" onclick="guardarPick(${i})">✅ Guardar</button>
+      </div>`}
+    </div>`).join("");
+  window._picks = d.picks;
+}
+$("#picks-dias").onchange = cargarPicks;
+
+async function guardarPick(i) {
+  const p = window._picks[i];
+  const cuota = parseFloat($("#pc-" + i).value.replace(",", "."));
+  if (!(cuota > 1)) { alert("Escribe la cuota que has conseguido, por ejemplo 1,95"); return; }
+  if (cuota < p.cuota_minima && !confirm(`Esa cuota (${coma(cuota)}) está por debajo de la mínima (${coma(p.cuota_minima)}): ya no tiene valor. ¿Guardarla igualmente?`)) return;
+  const r = await api("/api/guardar", {...p, cuota, casa: $("#pk-" + i).value || p.casa});
+  alert(r.mensaje);
+  cargarPicks();
+}
+
+$("#btn-publicar").onclick = async () => {
+  const r = await api("/api/publicar", {});
+  if (!r.cuantos) { alert("No hay picks nuevos guardados para publicar. Primero guarda los que apuestes."); return; }
+  $("#publicar-caja").hidden = false;
+  $("#publicar-texto").value = r.texto;
+  try { await navigator.clipboard.writeText(r.texto); } catch (e) { $("#publicar-texto").select(); }
+};
+
+// ---------- CÓRNERS
+async function cargarCorners() {
+  const caja = $("#corners-lista");
+  caja.innerHTML = '<div class="vacio">Calculando córners (la primera vez tarda unos segundos)...</div>';
+  const d = await api("/api/corners?dias=" + $("#corners-dias").value);
+  if (d.error) { caja.innerHTML = `<div class="vacio">${esc(d.error)}</div>`; return; }
+  if (!d.corners.length) { caja.innerHTML = '<div class="tarjeta vacio">No hay córners interesantes en esas fechas. Prueba con más días o actualiza los datos.</div>'; return; }
+  caja.innerHTML = d.corners.map((c, i) => `
+    <div class="tarjeta pick">
+      <div class="partido">${esc(c.local)} – ${esc(c.visitante)}</div>
+      <div class="meta">${esc(c.dia)} · ${esc(c.nombre_liga)} · ${String(c.esperados).replace(".", ",")} córners esperados</div>
+      <div class="apuesta">➡️ <b>${esc(c.descripcion)}</b> <span class="etiqueta e-amarillo">${c.prob} %</span></div>
+      <div class="datos">
+        <div class="clave"><b>${coma(c.cuota_minima)}</b><span>Cuota mínima</span></div>
+        <div><b>${coma(c.cuota_justa)}</b><span>Cuota justa</span></div>
+      </div>
+      ${c.guardado ? '<span class="etiqueta e-verde">✅ Guardado en tu historial</span>' : `
+      <div class="fila">
+        <span>Si la apuestas: cuota</span>
+        <input class="pequeno" id="cc-${i}" placeholder="${coma(c.cuota_minima)}" inputmode="decimal">
+        <input class="pequeno" id="ck-${i}" placeholder="Casa" style="width:120px">
+        <span>stake</span>
+        <select id="cs-${i}">${[1,2,3,4,5].map((s) => `<option ${s === d.stake_sugerido ? "selected" : ""}>${s}</option>`).join("")}</select>
+        <button class="boton" onclick="guardarCorner(${i})">✅ Guardar</button>
+      </div>`}
+    </div>`).join("");
+  window._corners = d.corners;
+}
+$("#corners-dias").onchange = cargarCorners;
+
+async function guardarCorner(i) {
+  const c = window._corners[i];
+  const cuota = parseFloat(($("#cc-" + i).value || "").replace(",", "."));
+  if (!(cuota > 1)) { alert("Escribe la cuota que has conseguido, por ejemplo 1,85"); return; }
+  if (cuota < c.cuota_minima && !confirm(`Esa cuota está por debajo de la mínima (${coma(c.cuota_minima)}). ¿Guardarla igualmente?`)) return;
+  const r = await api("/api/guardar", {...c, familia: "Córners", cuota, casa: $("#ck-" + i).value || "manual", stake: $("#cs-" + i).value});
+  alert(r.mensaje);
+  cargarCorners();
+}
+
+// ---------- HISTORIAL
+function tabla(filas, columnas) {
+  if (!filas.length) return '<div class="vacio">Todavía no hay datos.</div>';
+  return `<table><tr>${columnas.map(([t, , n]) => `<th class="${n ? "num" : ""}">${t}</th>`).join("")}</tr>` +
+    filas.map((f) => `<tr>${columnas.map(([, k, n]) => `<td class="${n ? "num" : ""}">${f[k] ?? "–"}</td>`).join("")}</tr>`).join("") + "</table>";
+}
+const ESTADOS = {pendiente: "e-azul", ganada: "e-verde", "medio ganada": "e-verde", perdida: "e-rojo", "medio perdida": "e-rojo", nula: "e-amarillo"};
+
+async function cargarHistorial() {
+  const d = await api("/api/historial");
+  if (d.error) { $("#hist-cifras").innerHTML = `<div class="vacio">${esc(d.error)}</div>`; return; }
+  const t = d.total;
+  $("#hist-cifras").innerHTML = `
+    <div class="cifra"><div class="n">${t.picks}</div><div class="t">Picks liquidados</div></div>
+    <div class="cifra"><div class="n">${t.acierto} %</div><div class="t">Acertados</div></div>
+    <div class="cifra"><div class="n ${t.unidades >= 0 ? "ok" : "ko"}">${t.unidades >= 0 ? "+" : ""}${coma(t.unidades)} u</div><div class="t">Unidades ganadas</div></div>
+    <div class="cifra"><div class="n ${t.yield >= 0 ? "ok" : "ko"}">${t.yield >= 0 ? "+" : ""}${t.yield} %</div><div class="t">Yield (beneficio / apostado)</div></div>
+    <div class="cifra"><div class="n">${t.clv === null ? "–" : (t.clv >= 0 ? "+" : "") + t.clv + " %"}</div><div class="t">CLV (positivo = valor real)</div></div>
+    <div class="cifra"><div class="n">${d.semanas_pos} / ${d.semanas_neg}</div><div class="t">Semanas en + / en −</div></div>
+    <div class="cifra"><div class="n">${d.racha_picks}</div><div class="t">Peor racha de fallos seguidos</div></div>
+    <div class="cifra"><div class="n">${d.racha_semanas}</div><div class="t">Peor racha de semanas en −</div></div>`;
+  const cols = [["Picks", "picks", 1], ["Acierto %", "acierto", 1], ["Cuota media", "cuota", 1], ["Unidades", "unidades", 1], ["Yield %", "yield", 1], ["CLV %", "clv", 1]];
+  $("#hist-mes").innerHTML = tabla(d.por_mes, [["Mes", "mes"], ...cols]);
+  $("#hist-mercado").innerHTML = tabla(d.por_mercado, [["Mercado", "mercado"], ...cols]);
+  $("#hist-picks").innerHTML = tabla(d.picks.map((p) => ({...p,
+      estado: `<span class="etiqueta ${ESTADOS[p.estado] || ""}">${esc(p.estado)}</span>`,
+      partido: esc(p.partido), apuesta: esc(p.apuesta), casa: esc(p.casa), cuota: coma(p.cuota),
+      unidades: p.unidades === null ? "–" : (p.unidades >= 0 ? "+" : "") + coma(p.unidades)})),
+    [["Fecha", "fecha"], ["Partido", "partido"], ["Apuesta", "apuesta"], ["Casa", "casa"], ["Cuota", "cuota", 1],
+     ["Stake", "stake", 1], ["Estado", "estado"], ["Unidades", "unidades", 1]]);
+}
+
+// ---------- CONFIG
+async function cargarConfig() {
+  const c = await api("/api/config");
+  $("#c-bank").value = c.bank;
+  $("#c-perfil").value = c.perfil;
+  $("#c-metodo").value = c.metodo;
+  $("#c-plano").value = Math.round(c.plano * 1000) / 10;
+  $("#c-ligas").value = (c.ligas || []).includes("todas") ? "todas" : "grandes";
+  $("#c-clave").value = "";
+  $("#c-clave-estado").textContent = c.clave_odds ? "✅ Tienes una clave guardada. Escribe otra solo si quieres cambiarla." : "Sin clave: se usan las cuotas de football-data.";
+  $("#c-plano-caja").hidden = c.metodo !== "plano";
+  $("#c-mensaje").textContent = "";
+}
+$("#c-metodo").onchange = () => $("#c-plano-caja").hidden = $("#c-metodo").value !== "plano";
+$("#c-perfil").onchange = () => { $("#c-metodo").value = $("#c-perfil").value === "cuotas_cortas" ? "plano" : "kelly"; $("#c-metodo").onchange(); };
+$("#btn-guardar-config").onclick = async () => {
+  const r = await api("/api/config", {bank: $("#c-bank").value, perfil: $("#c-perfil").value, metodo: $("#c-metodo").value,
+                                       plano: $("#c-plano").value, ligas: $("#c-ligas").value, clave_odds: $("#c-clave").value});
+  $("#c-mensaje").innerHTML = `<span class="${r.ok ? "ok" : "ko"}">${esc(r.mensaje)}</span>`;
+  if (r.ok) cargarConfig();
+};
+
+cargarInicio();
+</script>
+</body>
+</html>
