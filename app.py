@@ -163,7 +163,9 @@ def bajar_cuotas_vivo(ligas: list[str]) -> None:
     if not clave:
         return
     codigos = [LIGAS[l][0] for l in expandir_ligas(ligas)]
-    descargar_cuotas(clave, codigos, os.path.join(DESCARGAS, "proximos_vivo.csv"))
+    # Solo el mercado de goles (es lo único que se apuesta): 1 crédito por liga en vez de 3,
+    # así el plan gratuito (500 al mes) da para una descarga diaria de las ligas principales.
+    descargar_cuotas(clave, codigos, os.path.join(DESCARGAS, "proximos_vivo.csv"), mercados="totals")
 
 
 def orden_descargar(args) -> None:
