@@ -48,6 +48,7 @@ def tipo_de(mercado: str) -> str:
 
 
 HISTORIAL = os.path.join(cli.CARPETA, "datos", "historial_top10.json")
+APUESTAS_MOVIL = os.path.join(cli.CARPETA, "datos", "apuestas_movil.json")
 
 
 def leer_historial() -> list[dict]:
@@ -66,14 +67,22 @@ def id_pick(p: dict) -> str:
     return f"{p['fecha']}_{p['local']}_{p['visitante']}_{p['mercado']}".replace(" ", "_").replace("/", "-")
 
 
-def aprendizaje() -> dict[str, dict]:
-    """Lo aprendido del propio historial del Top 10, por tipo de pick.
+def leer_apuestas_movil() -> list[dict]:
+    """Las apuestas que el usuario eligió y apuntó en el móvil, ya con resultado (ver movil/aprender.py)."""
+    if not os.path.exists(APUESTAS_MOVIL):
+        return []
+    with open(APUESTAS_MOVIL, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def resumir_aprendizaje(registros: list[dict]) -> dict[str, dict]:
+    """Por tipo de apuesta: cuántas, aciertos reales frente a esperados y el factor de corrección.
 
     factor: cuánto corregir las probabilidades del modelo (aciertos reales / aciertos esperados),
     suavizado con 15 «aciertos de prueba» para no reaccionar a rachas cortas.
     """
     resumen = {}
-    for p in leer_historial():
+    for p in registros:
         if p.get("beneficio") is None:
             continue
         r = resumen.setdefault(tipo_de(p["mercado"]), {"n": 0, "aciertos": 0.0, "esperados": 0.0, "unidades": 0.0})
@@ -84,7 +93,14 @@ def aprendizaje() -> dict[str, dict]:
     for r in resumen.values():
         r["factor"] = round(min(max((r["aciertos"] + 15) / (r["esperados"] + 15), 0.8), 1.1), 3)
         r["excluir"] = r["n"] >= 60 and r["aciertos"] < 0.85 * r["esperados"]
+        r["esperados"], r["unidades"] = round(r["esperados"], 2), round(r["unidades"], 2)
     return resumen
+
+
+def aprendizaje() -> dict[str, dict]:
+    """Lo aprendido de los picks del Top 10 y de las apuestas que el usuario eligió en el móvil
+    (reales y en papel): si un tipo acierta menos de lo que decía el modelo, se le bajan las probabilidades."""
+    return resumir_aprendizaje(leer_historial() + leer_apuestas_movil())
 
 
 def liquidar_historial() -> list[dict]:

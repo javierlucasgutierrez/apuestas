@@ -24,6 +24,7 @@
     --oro: #f0b84a; --oro-suave: #382a0c; --rojo: #ff8a80; --rojo-suave: #3d1714; color-scheme: dark;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { background: var(--fondo); color: var(--tinta); font: 16px/1.45 var(--texto); }
   body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--marcador); }
   header { background: var(--marcador); color: var(--marcador-tinta); position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
@@ -159,11 +160,14 @@
   </section>
 
   <section id="v-historial" hidden>
-    <div class="totales" id="totales"></div>
-    <h2>Por tipo</h2>
-    <div class="tabla" id="por-tipo"></div>
+    <h2>Tus apuestas</h2>
+    <p class="nota">Las que eliges y apuntas en la calculadora. Cada mañana se ponen los resultados y el sistema aprende de ellas.</p>
+    <div id="tuyas"></div>
     <h2>Lo que ha aprendido</h2>
     <p class="nota" id="aprendido"></p>
+    <h2>Picks automáticos</h2>
+    <div class="totales" id="totales"></div>
+    <div class="tabla" id="por-tipo"></div>
     <h2>Últimos picks</h2>
     <div class="tabla" id="ultimos"></div>
   </section>
@@ -176,7 +180,7 @@
       <p><b>Verde, «comparando casas».</b> Una casa paga más que el precio justo de Pinnacle o Betfair. Es lo único con backtest de dinero: «más de 2,5 goles» dio +10 % en 444 apuestas.</p>
       <p><b>Ámbar, «modelo».</b> Sale de las estadísticas: sus probabilidades se cumplen, pero no hay cuotas antiguas para comprobar si dan dinero. Está en prueba.</p>
       <p><b>Cuota mínima.</b> Lo mínimo que tiene que pagar tu casa para que valga la pena. Si paga menos, no se apuesta, aunque el partido «pinte bien».</p>
-      <p><b>Cómo aprende.</b> Cada pick se guarda con su resultado. Si un tipo de pick acierta menos de lo que predijo, se le bajan las probabilidades; si con suficientes picks acierta claramente menos, se deja de proponer.</p>
+      <p><b>Cómo aprende.</b> Cada pick automático y cada apuesta que apuntas (de verdad o en papel) se guarda con su resultado. Si un tipo (goles, 1ª parte o córners) acierta menos de lo que decía el modelo, se le bajan las probabilidades en la tabla; si acierta más, se suben un poco. Se mueve despacio a propósito, para no dejarse engañar por rachas: con pocas apuestas apenas cambia. Cuantas más apuntes, mejor aprende.</p>
       <p><b>Cuándo se actualiza.</b> Cada mañana: pone los resultados, aprende y mira los partidos de hoy a dentro de 3 días. Un pick publicado ya no cambia, para que puedas apostarlo pronto, antes de que se mueva la cuota. Como mucho hay 10 a la vez.</p>
       <p class="nota">Apuesta solo lo que puedas permitirte perder. Habrá semanas en negativo. Ayuda: jugarbien.es · 900 200 225.</p>
     </div>
@@ -190,7 +194,7 @@ const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<"
 // Los ids del almacén solo admiten letras, cifras y _ - . ~ : @ +
 const clave = (id) => String(id).normalize("NFKD").replace(/[^\w\-.~:@+]/g, "_").slice(0, 190);
 
-let semana = null, historial = [], marcas = {}, db = null, partidos = [];
+let semana = null, historial = [], marcas = {}, db = null, partidos = [], extra = null;
 
 function vista(v) {
   for (const b of document.querySelectorAll("nav button")) b.setAttribute("aria-selected", String(b.dataset.v === v));
@@ -252,11 +256,23 @@ function pintarHistorial() {
   const tipos = Object.entries(r.por_tipo || {});
   $("#por-tipo").innerHTML = tipos.length ? `<table><tr><th>Tipo</th><th class="n">Picks</th><th class="n">Acierto</th><th class="n">Unidades</th></tr>${tipos.map(([k, v]) =>
     `<tr><td>${esc(k)}</td><td class="n">${v.picks}</td><td class="n">${Math.round(100 * v.acertados / v.picks)} %</td><td class="n ${v.unidades >= 0 ? "bien" : "mal"}">${v.unidades >= 0 ? "+" : ""}${coma(v.unidades)}</td></tr>`).join("")}</table>`
-    : `<div class="vacio">Todavía no hay picks liquidados. Los resultados se ponen solos cada lunes.</div>`;
-  const ap = Object.entries((semana && semana.aprendizaje) || {});
+    : `<div class="vacio">Todavía no hay picks liquidados. Los resultados se ponen solos cada mañana.</div>`;
+  const ap = Object.entries((extra && extra.aprendizaje) || (semana && semana.aprendizaje) || {});
   $("#aprendido").textContent = ap.length
-    ? ap.map(([k, v]) => `${k}: acierta ${v.aciertos} de ${coma(v.esperados, 1)} esperados → ${v.excluir ? "se deja de proponer" : "probabilidades × " + coma(v.factor, 3)}`).join(" · ")
-    : "Aún no hay datos suficientes: empieza a aprender con los primeros resultados.";
+    ? ap.map(([k, v]) => `${k}: ${v.n} apuestas, acertadas ${coma(v.aciertos, 0)} de ${coma(v.esperados, 1)} que esperaba el modelo → ${v.excluir ? "se deja de proponer" : v.factor < 1 ? "bajo sus probabilidades un " + coma(100 * (1 - v.factor), 1) + " %" : v.factor > 1 ? "subo sus probabilidades un " + coma(100 * (v.factor - 1), 1) + " %" : "sin cambios"}`).join(" · ")
+    : "Aún no hay resultados: empieza a aprender con las primeras apuestas que apuntes.";
+  const tuyas = extra && extra.tuyas;
+  const bloque = (titulo, b) => !b || !b.total.n ? "" : `
+    <div class="totales">
+      <div><b>${b.total.n}</b><span>${titulo}</span></div>
+      <div><b>${Math.round(100 * b.total.aciertos / b.total.n)} %</b><span>Acertadas (el modelo esperaba ${Math.round(100 * b.total.esperados / b.total.n)} %)</span></div>
+      <div><b class="${b.total.unidades >= 0 ? "bien" : "mal"}">${b.total.unidades >= 0 ? "+" : ""}${coma(b.total.unidades)}</b><span>Unidades · ${b.total.yield >= 0 ? "+" : ""}${coma(b.total.yield, 1)} %</span></div>
+    </div>
+    <div class="tabla"><table><tr><th>Apuesta</th><th class="n">N.º</th><th class="n">Acierto</th><th class="n">Esperado</th><th class="n">Unid.</th></tr>${Object.entries(b.por_linea).map(([m, v]) =>
+      `<tr><td>${esc(textoMercado(m))}</td><td class="n">${v.n}</td><td class="n">${Math.round(100 * v.aciertos / v.n)} %</td><td class="n">${Math.round(100 * v.esperados / v.n)} %</td><td class="n ${v.unidades >= 0 ? "bien" : "mal"}">${v.unidades >= 0 ? "+" : ""}${coma(v.unidades)}</td></tr>`).join("")}</table></div>`;
+  $("#tuyas").innerHTML = tuyas && (tuyas.reales.total.n || tuyas.papel.total.n)
+    ? bloque("Apostadas de verdad", tuyas.reales) + bloque("En papel (sin dinero)", tuyas.papel)
+    : `<div class="vacio">Todavía no hay apuestas tuyas con resultado. Apunta en la calculadora lo que elijas («La he apostado» o «Apuntar sin apostar»).</div>`;
   const ult = [...historial].reverse().filter((p) => p.estado && p.estado !== "pendiente").slice(0, 40);
   const color = {ganada: "bien", "medio ganada": "bien", perdida: "mal", "medio perdida": "mal"};
   $("#ultimos").innerHTML = ult.length ? `<table><tr><th>Fecha</th><th>Partido</th><th>Apuesta</th><th>Resultado</th><th class="n">Ud.</th></tr>${ult.map((p) =>
@@ -448,6 +464,8 @@ pintarMisApuestas();
   db.collection("apuestas").onSnapshot((q) => { marcas = {}; for (const d of q.docs) marcas[d.id] = d.data(); pintarSemana(); pintarMisApuestas(); }, () => {});
   db.doc("partidos/proximos").onSnapshot((s) => {
     partidos = (s.exists && s.data().partidos) || [];
+    extra = s.exists ? s.data() : null;
+    pintarHistorial();
     $("#calc-nota").textContent = partidos.length
       ? `${partidos.length} partidos de los próximos 7 días (actualizado ${s.data().actualizado}). Elige, escribe la cuota de tu casa y te digo si apostar.`
       : "Todavía no hay partidos cargados. Se actualizan cada mañana.";
