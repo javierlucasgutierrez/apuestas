@@ -1,4 +1,4 @@
-<title>Top 10 de Valor</title>
+<title>Más de: goles y córners</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Source+Sans+3:wght@400;600;700&display=swap">
@@ -69,6 +69,24 @@
   .totales b { display: block; font: 700 30px/1 var(--display); }
   .totales span { font-size: 12px; color: var(--suave); }
   .bien { color: var(--cesped); } .mal { color: var(--rojo); }
+  nav { overflow-x: auto; scrollbar-width: none; }
+  nav button { white-space: nowrap; }
+  .filtros { display: flex; gap: 6px; flex-wrap: wrap; }
+  .filtros select { width: auto; flex: 1 1 130px; }
+  .grupo { display: flex; gap: 4px; background: var(--papel); border: 1px solid var(--linea); border-radius: 10px; padding: 4px; }
+  .grupo button { flex: 1; border: 0; background: none; color: var(--suave); border-radius: 7px; padding: 8px 4px; font: 600 15px var(--display); letter-spacing: .05em; text-transform: uppercase; cursor: pointer; }
+  .grupo button[aria-pressed="true"] { background: var(--marcador); color: var(--marcador-tinta); }
+  .estad { max-height: 70vh; overflow: auto; }
+  .estad table { font-size: 13px; }
+  .estad th { position: sticky; top: 0; background: var(--papel); z-index: 2; cursor: pointer; user-select: none; }
+  .estad th.activo { color: var(--cesped); }
+  .estad td:first-child, .estad th:first-child { position: sticky; left: 0; background: var(--papel); z-index: 1; max-width: 150px; white-space: normal; }
+  .estad th:first-child { z-index: 3; }
+  .estad td.p { text-align: center; padding: 6px 4px; min-width: 52px; }
+  .estad td.p b { display: block; font: 700 17px/1 var(--display); }
+  .estad td.p span { font-size: 10px; opacity: .8; }
+  .estad tr.fila-partido { cursor: pointer; }
+  .eq { font-weight: 600; line-height: 1.2; }
   .tabla { overflow-x: auto; background: var(--papel); border: 1px solid var(--linea); border-radius: 10px; }
   table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
   th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--linea); white-space: nowrap; }
@@ -92,18 +110,33 @@
 
 <header>
   <div class="cab">
-    <h1>Top 10 de Valor</h1>
+    <h1>Más de · goles y córners</h1>
     <div class="sub" id="sub">Solo «más de» goles y córners · ligas principales de Europa</div>
     <nav role="tablist">
-      <button role="tab" id="t-calc" aria-selected="false" data-v="calc">Calculadora</button>
+      <button role="tab" id="t-tabla" aria-selected="false" data-v="tabla">Tabla</button>
+      <button role="tab" id="t-calc" aria-selected="false" data-v="calc">Calcular</button>
       <button role="tab" id="t-semana" aria-selected="true" data-v="semana">Picks</button>
       <button role="tab" id="t-historial" aria-selected="false" data-v="historial">Historial</button>
-      <button role="tab" id="t-ayuda" aria-selected="false" data-v="ayuda">Cómo funciona</button>
+      <button role="tab" id="t-ayuda" aria-selected="false" data-v="ayuda">Ayuda</button>
     </nav>
   </div>
 </header>
 
 <main>
+  <section id="v-tabla" hidden>
+    <div class="grupo" id="grupo">
+      <button data-g="goles" aria-pressed="true">Goles</button>
+      <button data-g="1t" aria-pressed="false">1ª parte</button>
+      <button data-g="corners" aria-pressed="false">Córners</button>
+    </div>
+    <div class="filtros">
+      <select id="f-dia" aria-label="Día"></select>
+      <select id="f-liga" aria-label="Liga"></select>
+    </div>
+    <p class="nota" id="tabla-nota">Probabilidad de que pase (y debajo, la cuota justa). Toca una columna para ordenar; toca un partido para calcular con tu cuota.</p>
+    <div class="tabla estad" id="estad"></div>
+  </section>
+
   <section id="v-calc" hidden>
     <p class="nota" id="calc-nota">Elige el partido y la línea, escribe la cuota que ves en tu casa y te digo si apostar.</p>
     <div class="boleto">
@@ -137,6 +170,7 @@
 
   <section id="v-ayuda" class="ayuda" hidden>
     <div class="boleto">
+      <p><b>Tabla.</b> Todos los partidos de la semana con la probabilidad de cada «más de» (verde = muy probable, rojo = poco). Debajo, la cuota justa: si tu casa paga más, tiene valor. Con ✓, esa cuota justa es la de Pinnacle/Betfair (la más fiable); sin ✓, la del modelo. Toca una casilla y te lleva a la calculadora con esa apuesta.</p>
       <p><b>Calculadora.</b> Lo más práctico: ves una cuota en Bet365 o Betfair, eliges el partido y la línea, y te dice si apostar. Si hay precio de Pinnacle/Betfair para esa línea, usa ese (es el más fiable) y solo dice «apuesta» si tu casa paga más; si no, usa el modelo y te avisa de que está en prueba. «Apuntar sin apostar» guarda la apuesta en papel para ver con el tiempo si habría ganado.</p>
       <p><b>Qué es.</b> Cada semana, en la nube, el programa baja los datos de las ligas principales (1ª y 2ª de Inglaterra, España, Alemania, Italia y Francia, más Países Bajos y Escocia) y elige las mejores oportunidades de «más de» goles o córners (como mucho 10 a la vez) con 3-4 días de antelación. Como mucho una por partido.</p>
       <p><b>Verde, «comparando casas».</b> Una casa paga más que el precio justo de Pinnacle o Betfair. Es lo único con backtest de dinero: «más de 2,5 goles» dio +10 % en 444 apuestas.</p>
@@ -160,11 +194,11 @@ let semana = null, historial = [], marcas = {}, db = null, partidos = [];
 
 function vista(v) {
   for (const b of document.querySelectorAll("nav button")) b.setAttribute("aria-selected", String(b.dataset.v === v));
-  for (const s of ["calc", "semana", "historial", "ayuda"]) $("#v-" + s).hidden = s !== v;
+  for (const s of ["tabla", "calc", "semana", "historial", "ayuda"]) $("#v-" + s).hidden = s !== v;
   try { localStorage.setItem("vista", v); } catch (e) {}
 }
 for (const b of document.querySelectorAll("nav button")) b.onclick = () => vista(b.dataset.v);
-vista("calc");
+vista("tabla");
 try { const v = localStorage.getItem("vista"); if (v) vista(v); } catch (e) {}
 
 function pintarSemana() {
@@ -344,6 +378,60 @@ $("#cuota").addEventListener("input", calcular);
 document.addEventListener("click", (e) => { const t = e.target.dataset && e.target.dataset.guardar; if (t) guardarCalc(t); });
 try { $("#casa").value = localStorage.getItem("casa") || ""; } catch (e) {}
 
+// ---- Tabla de estadísticas ----
+const COLUMNAS = {
+  goles: [["Goles +1.5", "+1,5"], ["Goles +2.5", "+2,5"], ["Goles +3.5", "+3,5"], ["Goles +4.5", "+4,5"]],
+  "1t": [["1ª parte goles +0.5", "+0,5"], ["1ª parte goles +1.5", "+1,5"]],
+  corners: [["Córners +7.5", "+7,5"], ["Córners +8.5", "+8,5"], ["Córners +9.5", "+9,5"], ["Córners +10.5", "+10,5"], ["Córners +11.5", "+11,5"], ["Córners +12.5", "+12,5"]],
+};
+let grupo = "goles", orden = {goles: "Goles +2.5", "1t": "1ª parte goles +0.5", corners: "Córners +9.5"};
+try { grupo = localStorage.getItem("grupo") || grupo; } catch (e) {}
+function colorProb(p) {
+  // de rojo (poco probable) a verde (muy probable), con la misma opacidad en claro y oscuro
+  const t = Math.max(0, Math.min(1, (p - 30) / 50));
+  return `hsla(${Math.round(t * 130)}, 65%, 45%, ${0.18 + 0.5 * Math.abs(t - 0.5)})`;
+}
+function rellenarFiltros() {
+  const dias = [...new Set(partidos.map((p) => p.dia))], ligas = [...new Set(partidos.map((p) => p.nombre_liga))].sort();
+  const d = $("#f-dia").value, l = $("#f-liga").value;
+  $("#f-dia").innerHTML = `<option value="">Todos los días</option>` + dias.map((x) => `<option>${esc(x)}</option>`).join("");
+  $("#f-liga").innerHTML = `<option value="">Todas las ligas</option>` + ligas.map((x) => `<option>${esc(x)}</option>`).join("");
+  if (dias.includes(d)) $("#f-dia").value = d;
+  if (ligas.includes(l)) $("#f-liga").value = l;
+}
+function pintarTabla() {
+  for (const b of document.querySelectorAll("#grupo button")) b.setAttribute("aria-pressed", String(b.dataset.g === grupo));
+  const cols = COLUMNAS[grupo], col = orden[grupo];
+  const d = $("#f-dia").value, l = $("#f-liga").value;
+  const filas = partidos.map((p, i) => ({p, i})).filter(({p}) => (!d || p.dia === d) && (!l || p.nombre_liga === l)
+    && cols.some(([m]) => p.mercados[m]));
+  if (col === "esperado") filas.sort((a, b) => (grupo === "corners" ? (b.p.corners || 0) - (a.p.corners || 0) : b.p.goles - a.p.goles));
+  else filas.sort((a, b) => ((b.p.mercados[col] || [0])[0]) - ((a.p.mercados[col] || [0])[0]));
+  if (!filas.length) { $("#estad").innerHTML = `<div class="vacio">No hay partidos con estos filtros.</div>`; return; }
+  const esperado = grupo === "corners" ? "Córn." : "Goles";
+  $("#estad").innerHTML = `<table><tr><th>Partido</th><th class="n ${col === "esperado" ? "activo" : ""}" data-orden="esperado">${esperado} esp.</th>${cols.map(([m, t]) =>
+    `<th class="${m === col ? "activo" : ""}" data-orden="${esc(m)}" style="text-align:center">${t}${m === col ? " ▼" : ""}</th>`).join("")}</tr>
+    ${filas.map(({p, i}) => `<tr class="fila-partido" data-i="${i}"><td><div class="eq">${esc(p.local)} – ${esc(p.visitante)}</div><div class="meta">${esc(p.dia)} · ${esc(p.liga)}</div></td>
+      <td class="n">${grupo === "corners" ? coma(p.corners, 1) : coma(p.goles, 1)}</td>
+      ${cols.map(([m]) => { const v = p.mercados[m]; if (!v) return `<td class="p">–</td>`;
+        const justa = v[1] ? `<span>justa ${coma(v[1])} ✓</span>` : `<span>${coma(100 / v[0])}</span>`;
+        return `<td class="p" data-m="${esc(m)}" style="background:${colorProb(v[0])}"><b>${coma(v[0], 0)}%</b>${justa}</td>`; }).join("")}</tr>`).join("")}</table>`;
+}
+$("#grupo").addEventListener("click", (e) => { const g = e.target.dataset.g; if (!g) return; grupo = g; try { localStorage.setItem("grupo", g); } catch (x) {} pintarTabla(); });
+$("#f-dia").addEventListener("change", pintarTabla);
+$("#f-liga").addEventListener("change", pintarTabla);
+$("#estad").addEventListener("click", (e) => {
+  const th = e.target.closest("th[data-orden]");
+  if (th) { orden[grupo] = th.dataset.orden; pintarTabla(); return; }
+  const tr = e.target.closest("tr[data-i]");
+  if (!tr) return;
+  const td = e.target.closest("td[data-m]");
+  $("#buscar").value = ""; opcionesPartidos();
+  $("#partido").value = tr.dataset.i; opcionesLineas();
+  $("#linea").value = td ? td.dataset.m : orden[grupo] === "esperado" ? COLUMNAS[grupo][0][0] : orden[grupo];
+  calcular(); vista("calc"); $("#cuota").focus();
+});
+
 pintarSemana();
 pintarHistorial();
 pintarMisApuestas();
@@ -365,6 +453,8 @@ pintarMisApuestas();
       : "Todavía no hay partidos cargados. Se actualizan cada mañana.";
     opcionesPartidos();
     calcular();
+    rellenarFiltros();
+    pintarTabla();
   }, () => { $("#calc-nota").textContent = "No se pueden cargar los partidos ahora mismo."; });
 })();
 </script>
