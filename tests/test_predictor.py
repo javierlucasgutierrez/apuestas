@@ -393,6 +393,22 @@ class TestNombresDeEquipos(unittest.TestCase):
         self.assertIsNone(emparejar_equipo("Equipo Inventado", liga))
         self.assertEqual(emparejar_equipo("Wolverhampton Wanderers", ["Wolves", "Man City"]), "Wolves")
         self.assertEqual(emparejar_equipo("Inter Milan", ["Inter", "Milan"]), "Inter")
+        # Nombres del calendario (fixturedownload.com)
+        self.assertEqual(emparejar_equipo("RCD Espanyol de Barcelona", ["Barcelona", "Espanol"]), "Espanol")
+        self.assertEqual(emparejar_equipo("Spurs", ["Tottenham", "Man United"]), "Tottenham")
+        self.assertEqual(emparejar_equipo("Man Utd", ["Man City", "Man United"]), "Man United")
+
+
+class TestCalendario(unittest.TestCase):
+    def test_solo_partidos_sin_jugar_y_en_hora_de_espana(self):
+        from predictor.calendario import partidos_feed
+        feed = [{"DateUtc": "2026-10-31 19:00:00Z", "HomeTeam": "Chelsea", "AwayTeam": "Man Utd", "HomeTeamScore": None},
+                {"DateUtc": "2026-10-24 14:00:00Z", "HomeTeam": "Spurs", "AwayTeam": "Leeds", "HomeTeamScore": 2},
+                {"DateUtc": "2026-12-31 23:30:00Z", "HomeTeam": "Wolves", "AwayTeam": "Fulham", "HomeTeamScore": None}]
+        filas = partidos_feed(feed, "E0")
+        self.assertEqual(len(filas), 2)
+        self.assertEqual((filas[0]["Date"], filas[0]["Time"], filas[0]["Div"]), ("31/10/2026", "20:00", "E0"))
+        self.assertEqual(filas[1]["Date"], "01/01/2027")  # medianoche y media en España: ya es otro día
 
 
 if __name__ == "__main__":

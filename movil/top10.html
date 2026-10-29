@@ -84,7 +84,7 @@
     <h1>Top 10 de Valor</h1>
     <div class="sub" id="sub">Solo «más de» goles y córners · ligas principales de Europa</div>
     <nav role="tablist">
-      <button role="tab" id="t-semana" aria-selected="true" data-v="semana">Esta semana</button>
+      <button role="tab" id="t-semana" aria-selected="true" data-v="semana">Próximos días</button>
       <button role="tab" id="t-historial" aria-selected="false" data-v="historial">Historial</button>
       <button role="tab" id="t-ayuda" aria-selected="false" data-v="ayuda">Cómo funciona</button>
     </nav>
@@ -109,12 +109,12 @@
 
   <section id="v-ayuda" class="ayuda" hidden>
     <div class="boleto">
-      <p><b>Qué es.</b> Cada semana, en la nube, el programa baja los datos de las ligas principales (1ª y 2ª de Inglaterra, España, Alemania, Italia y Francia, más Países Bajos y Escocia) y elige las 10 oportunidades de «más de» goles o córners con más valor y probabilidad. Como mucho una por partido.</p>
+      <p><b>Qué es.</b> Cada semana, en la nube, el programa baja los datos de las ligas principales (1ª y 2ª de Inglaterra, España, Alemania, Italia y Francia, más Países Bajos y Escocia) y elige las mejores oportunidades de «más de» goles o córners (como mucho 10 a la vez) con 3-4 días de antelación. Como mucho una por partido.</p>
       <p><b>Verde, «comparando casas».</b> Una casa paga más que el precio justo de Pinnacle o Betfair. Es lo único con backtest de dinero: «más de 2,5 goles» dio +10 % en 444 apuestas.</p>
       <p><b>Ámbar, «modelo».</b> Sale de las estadísticas: sus probabilidades se cumplen, pero no hay cuotas antiguas para comprobar si dan dinero. Está en prueba.</p>
       <p><b>Cuota mínima.</b> Lo mínimo que tiene que pagar tu casa para que valga la pena. Si paga menos, no se apuesta, aunque el partido «pinte bien».</p>
       <p><b>Cómo aprende.</b> Cada pick se guarda con su resultado. Si un tipo de pick acierta menos de lo que predijo, se le bajan las probabilidades; si con suficientes picks acierta claramente menos, se deja de proponer.</p>
-      <p><b>Cuándo se actualiza.</b> Lunes (resultados y aprendizaje), miércoles y viernes (picks del fin de semana).</p>
+      <p><b>Cuándo se actualiza.</b> Cada mañana: pone los resultados, aprende y mira los partidos de hoy a dentro de 3 días. Un pick publicado ya no cambia, para que puedas apostarlo pronto, antes de que se mueva la cuota. Como mucho hay 10 a la vez.</p>
       <p class="nota">Apuesta solo lo que puedas permitirte perder. Habrá semanas en negativo. Ayuda: jugarbien.es · 900 200 225.</p>
     </div>
   </section>
@@ -141,14 +141,14 @@ function pintarSemana() {
   const caja = $("#lista");
   if (!semana || !(semana.picks || []).length) {
     $("#semana-nota").textContent = "";
-    caja.innerHTML = `<div class="vacio">Aún no hay picks para este fin de semana.<br>Se publican solos los miércoles y viernes; vuelve entonces.</div>`;
+    caja.innerHTML = `<div class="vacio">Ahora mismo no hay picks para los próximos días.<br>Se revisa sola cada mañana; vuelve mañana.</div>`;
     return;
   }
   const picks = semana.picks;
   $("#sub").textContent = `Actualizado ${semana.actualizado || ""} · ${picks.length} picks · solo «más de»`;
   $("#semana-nota").textContent = picks.length < 10
-    ? `Esta semana solo hay ${picks.length} que merezcan la pena: no se rellena con picks malos.`
-    : "Apuesta solo si tu casa paga la cuota mínima o más.";
+    ? `Para los próximos 4 días hay ${picks.length} que merezcan la pena: no se rellena con picks malos. Cada mañana se añaden los nuevos.`
+    : "Apuesta solo si tu casa paga la cuota mínima o más. Cuanto antes, mejor: la cuota aún no se ha movido.";
   caja.innerHTML = picks.map((p, i) => {
     const k = clave(p.id || `${p.fecha}_${p.local}_${p.visitante}_${p.mercado}`);
     const m = marcas[k];

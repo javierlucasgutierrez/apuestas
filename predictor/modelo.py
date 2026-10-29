@@ -222,6 +222,11 @@ ALIAS = {
     "sporting lisbon": "sp lisbon", "sporting cp": "sp lisbon", "sporting braga": "sp braga",
     "nottingham forest": "nott'm forest", "sheffield united": "sheffield united",
     "queens park rangers": "qpr", "west bromwich albion": "west brom", "athletic club": "ath bilbao",
+    # Nombres del calendario de fixturedownload.com
+    "spurs": "tottenham", "man utd": "man united", "havre athletic club": "le havre",
+    "stade rennais fc": "rennes", "az": "az alkmaar", "psv": "psv eindhoven",
+    "heart of midlothian": "hearts", "r racing club": "santander", "rc deportivo": "la coruna",
+    "rcd espanyol de barcelona": "espanol",
 }
 
 

@@ -107,3 +107,5 @@ def descargar(carpeta: str, ligas: list[str], temporadas: int = 4, aviso=print) 
     with open(destino, "w", encoding="utf-8") as f:
         f.write("\n".join(elegidas) + "\n")
     aviso(f"  Próximos partidos: {len(elegidas) - 1}")
+    from predictor.calendario import descargar_calendario
+    descargar_calendario(carpeta, codigos, actual, aviso=aviso)

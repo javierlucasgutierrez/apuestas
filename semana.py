@@ -12,7 +12,8 @@ pasó con lo que se predijo para cada tipo (goles, 1ª parte, córners). Si un t
 de lo previsto, se le bajan las probabilidades; con suficientes datos y claramente peor, se deja
 de proponer.
 
-Uso:  python semana.py --desde 2026-10-31 --dias 2 [--guardar] [--json top10.json]
+Uso:  python semana.py [--desde AAAA-MM-DD] [--dias 3] [--guardar] [--liquidar] [--json top10.json]
+(por defecto, de hoy a dentro de 3 días; pensado para ejecutarse cada día)
 """
 
 import argparse
@@ -34,6 +35,8 @@ MAXIMO_POR_TIPO = {"Córners": 4, "1ª parte": 3, "Goles": 10}
 # casa pagase mucho más de lo justo: casi nunca pasa, así que no se proponen.
 PROB_MAXIMA_MODELO = 0.70
 PERFIL = "top10"
+# Cuántos días por delante se miran (hoy + 3): los picks salen con 3-4 días de antelación.
+DIAS_VISTA = 3
 
 
 def tipo_de(mercado: str) -> str:
@@ -117,7 +120,10 @@ def liquidar_historial() -> list[dict]:
     return hechos
 
 
-def top10(desde: date, dias: int, n: int = N_PICKS) -> dict:
+def top10(desde: date, dias: int, n: int = N_PICKS, ya: list[dict] | None = None) -> dict:
+    """Los mejores picks del periodo. `ya` son los ya publicados (no se cambian ni se repiten:
+    ocupan su hueco de los `n` y cuentan para los topes por tipo)."""
+    ya = ya or []
     prefs = panel.preferencias()
     ligas = {LIGAS[l][0] for l in expandir_ligas(prefs.get("ligas", ["principales"])) if l in LIGAS}
     aprendido = aprendizaje()
@@ -154,8 +160,12 @@ def top10(desde: date, dias: int, n: int = N_PICKS) -> dict:
                                "cuota": c.get("mercado_mejor"), "valor": None, "puntos": 100 * prob})
 
     candidatos.sort(key=lambda c: -c["puntos"])
-    elegidos, partidos, por_tipo = [], set(), {}
+    elegidos, partidos, por_tipo = [], {(p["fecha"], p["local"]) for p in ya}, {}
+    for p in ya:
+        por_tipo[tipo_de(p["mercado"])] = por_tipo.get(tipo_de(p["mercado"]), 0) + 1
     for c in candidatos:
+        if len(ya) + len(elegidos) >= n:
+            break
         clave = (c["fecha"], c["local"])
         tipo = tipo_de(c["mercado"])
         if clave in partidos or por_tipo.get(tipo, 0) >= MAXIMO_POR_TIPO[tipo]:
@@ -163,8 +173,6 @@ def top10(desde: date, dias: int, n: int = N_PICKS) -> dict:
         por_tipo[tipo] = por_tipo.get(tipo, 0) + 1
         partidos.add(clave)
         elegidos.append(c)
-        if len(elegidos) == n:
-            break
 
     stake = prefs.get("plano", 0.01)
     salida = []
@@ -213,6 +221,14 @@ def resumen_historial() -> dict:
     return {"total": total, "por_tipo": por_tipo}
 
 
+def publicados(desde: date, dias: int) -> list[dict]:
+    """Picks del historial aún sin jugar dentro del periodo: ya publicados, se quedan fijos."""
+    hasta = (desde + timedelta(days=dias)).isoformat()
+    return sorted((p for p in leer_historial()
+                   if p.get("estado") == "pendiente" and desde.isoformat() <= p["fecha"] <= hasta),
+                  key=lambda p: (p["fecha"], p["local"]))
+
+
 def proximo_fin_de_semana(hoy: date) -> tuple[date, int]:
     """Del viernes al lunes siguientes (o el que está en curso si hoy es viernes a lunes)."""
     if hoy.weekday() in (4, 5, 6, 0):
@@ -232,10 +248,12 @@ def main() -> None:
     if args.liquidar:
         for p in liquidar_historial():
             print(f"  {p['estado'].upper():<14}{p['local']} - {p['visitante']}: {p['descripcion']} ({p['resultado']})")
-    desde, dias = proximo_fin_de_semana(date.today())
-    desde = date.fromisoformat(args.desde) if args.desde else desde
-    dias = args.dias or dias
-    resultado = top10(desde, dias)
+    # Por defecto, de hoy a dentro de 3 días: cuanto antes se publica un pick, menos se ha movido
+    # la cuota. Lo ya publicado se queda fijo y solo se rellenan los huecos hasta 10.
+    desde = date.fromisoformat(args.desde) if args.desde else date.today()
+    dias = DIAS_VISTA if args.dias is None else args.dias
+    fijos = publicados(desde, dias)
+    resultado = top10(desde, dias, ya=fijos)
     for p in resultado["picks"]:
         extra = f"valor +{p['valor']} % a {p['cuota']}" if p["origen"] == "mercado" else "modelo"
         print(f"{p['n']:>2}. {p['dia']}  {p['local']} - {p['visitante']} ({p['nombre_liga']}): "
@@ -244,6 +262,11 @@ def main() -> None:
           f"{ {k: v['factor'] for k, v in resultado['aprendizaje'].items()} })")
     if args.guardar:
         print(f"Añadidos al historial: {guardar(resultado)} nuevos")
+        resultado["picks"] = publicados(desde, dias)
+    else:
+        resultado["picks"] = sorted(fijos + resultado["picks"], key=lambda p: (p["fecha"], p["local"]))
+    for i, p in enumerate(resultado["picks"], 1):
+        p["n"] = i
     if args.json:
         resultado["resumen"] = resumen_historial()
         resultado["historial"] = leer_historial()[-200:]

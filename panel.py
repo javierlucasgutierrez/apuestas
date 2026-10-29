@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, urlparse
 
 import app as cli
 from predictor.cuotas import seleccionar
+from predictor.calendario import ARCHIVO as CALENDARIO
 from predictor.cuotas_vivo import archivo_proximos
 from predictor.datos import Partido, cargar_csv, cargar_varios
 from predictor.descargar import GRANDES
@@ -147,8 +148,14 @@ def proximos_partidos(modelo: Predictor) -> list[tuple]:
             resultado.append((p, filas_fd.get((p.fecha.strftime("%d/%m/%Y"), p.local))))
             vistos.add((p.fecha, p.local))
     vivo = os.path.join(cli.DESCARGAS, "proximos_vivo.csv")
-    if archivo_proximos(cli.DESCARGAS) == vivo:
-        for fila in leer_filas([vivo]):
+    fuentes = [vivo] if archivo_proximos(cli.DESCARGAS) == vivo else []
+    # El calendario va el último: solo añade partidos que aún no tienen cuotas.
+    fuentes.append(os.path.join(cli.DESCARGAS, CALENDARIO))
+    for fuente in fuentes:
+        if not os.path.exists(fuente):
+            continue
+        sin_cuotas = fuente.endswith(CALENDARIO)
+        for fila in leer_filas([fuente]):
             liga = fila.get("Div", "")
             if liga not in modelo.goles:
                 continue
@@ -161,7 +168,7 @@ def proximos_partidos(modelo: Predictor) -> list[tuple]:
             if (fecha, local) in vistos:
                 continue
             vistos.add((fecha, local))
-            resultado.append((Partido(fecha, local, visitante, liga=liga), fila))
+            resultado.append((Partido(fecha, local, visitante, liga=liga), None if sin_cuotas else fila))
     return resultado
 
 
