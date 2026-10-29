@@ -17,6 +17,7 @@ Uso: python3 estrategias.py --guardar --liquidar --json salida.json
 
 import argparse
 import json
+import math
 import os
 from collections import defaultdict, deque
 from datetime import date, timedelta
@@ -208,7 +209,8 @@ def publicar(elegidos: list[dict], recomendadas: set[str]) -> int:
     for e in sorted(elegidos, key=lambda e: orden[e["regla"]]):
         if e["regla"] not in recomendadas or not e.get("pm") or (e["fecha"], e["local"]) in vistos:
             continue
-        minima = round(max(1.50, 1.02 / e["pm"]), 2)
+        # Mínima = la que pide la regla (valor ≥1 % sobre el precio justo), redondeada hacia arriba.
+        minima = math.ceil(max(1.50, 1.01 / e["pm"]) * 100) / 100
         cuota, casa = (e["b365"], "Bet365") if e.get("b365") and e["b365"] >= minima else (minima, "mínima")
         kelly = (e["pm"] * cuota - 1) / (cuota - 1)
         pron.append({"id": f"{e['fecha']}_{e['local']}_{e['mercado']}", "publicado": datetime.now().isoformat(timespec="minutes"),
