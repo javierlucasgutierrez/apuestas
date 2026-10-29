@@ -76,6 +76,17 @@
   td.n, th.n { text-align: right; }
   h2 { font: 700 18px var(--display); letter-spacing: .05em; text-transform: uppercase; margin: 8px 0 0; }
   .ayuda p { margin: 0 0 10px; max-width: 65ch; }
+  select { font: inherit; padding: 10px; border-radius: 8px; border: 1px solid var(--linea); background: var(--papel); color: var(--tinta); width: 100%; min-width: 0; }
+  label { font-size: 13px; color: var(--suave); display: grid; gap: 4px; }
+  .dos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .dos input { width: 100%; }
+  .veredicto { border-radius: 10px; padding: 14px; display: grid; gap: 6px; }
+  .veredicto b { font: 700 24px/1.1 var(--display); letter-spacing: .02em; }
+  .v-si { background: var(--cesped-suave); color: var(--cesped); }
+  .v-prueba { background: var(--oro-suave); color: var(--oro); }
+  .v-no { background: var(--rojo-suave); color: var(--rojo); }
+  .veredicto p { margin: 0; color: var(--tinta); font-size: 14px; }
+  button.secundario { background: none; border: 1px solid var(--cesped); color: var(--cesped); border-radius: 8px; padding: 10px 14px; font: 600 16px var(--texto); cursor: pointer; }
   @media (prefers-reduced-motion: no-preference) { .boleto { transition: border-color .2s; } }
 </style>
 
@@ -84,7 +95,8 @@
     <h1>Top 10 de Valor</h1>
     <div class="sub" id="sub">Solo «más de» goles y córners · ligas principales de Europa</div>
     <nav role="tablist">
-      <button role="tab" id="t-semana" aria-selected="true" data-v="semana">Próximos días</button>
+      <button role="tab" id="t-calc" aria-selected="false" data-v="calc">Calculadora</button>
+      <button role="tab" id="t-semana" aria-selected="true" data-v="semana">Picks</button>
       <button role="tab" id="t-historial" aria-selected="false" data-v="historial">Historial</button>
       <button role="tab" id="t-ayuda" aria-selected="false" data-v="ayuda">Cómo funciona</button>
     </nav>
@@ -92,6 +104,22 @@
 </header>
 
 <main>
+  <section id="v-calc" hidden>
+    <p class="nota" id="calc-nota">Elige el partido y la línea, escribe la cuota que ves en tu casa y te digo si apostar.</p>
+    <div class="boleto">
+      <input id="buscar" placeholder="Buscar equipo…" aria-label="Buscar equipo" style="width:100%">
+      <label>Partido<select id="partido"></select></label>
+      <label>Apuesta («más de»)<select id="linea"></select></label>
+      <div class="dos">
+        <label>Cuota de tu casa<input id="cuota" inputmode="decimal" placeholder="1,85"></label>
+        <label>Casa<input id="casa" placeholder="Bet365"></label>
+      </div>
+    </div>
+    <div id="resultado"></div>
+    <h2>Mis apuestas</h2>
+    <div class="tabla" id="mis-apuestas"></div>
+  </section>
+
   <section id="v-semana">
     <p class="nota" id="semana-nota">Cargando los picks…</p>
     <div id="lista"></div>
@@ -109,6 +137,7 @@
 
   <section id="v-ayuda" class="ayuda" hidden>
     <div class="boleto">
+      <p><b>Calculadora.</b> Lo más práctico: ves una cuota en Bet365 o Betfair, eliges el partido y la línea, y te dice si apostar. Si hay precio de Pinnacle/Betfair para esa línea, usa ese (es el más fiable) y solo dice «apuesta» si tu casa paga más; si no, usa el modelo y te avisa de que está en prueba. «Apuntar sin apostar» guarda la apuesta en papel para ver con el tiempo si habría ganado.</p>
       <p><b>Qué es.</b> Cada semana, en la nube, el programa baja los datos de las ligas principales (1ª y 2ª de Inglaterra, España, Alemania, Italia y Francia, más Países Bajos y Escocia) y elige las mejores oportunidades de «más de» goles o córners (como mucho 10 a la vez) con 3-4 días de antelación. Como mucho una por partido.</p>
       <p><b>Verde, «comparando casas».</b> Una casa paga más que el precio justo de Pinnacle o Betfair. Es lo único con backtest de dinero: «más de 2,5 goles» dio +10 % en 444 apuestas.</p>
       <p><b>Ámbar, «modelo».</b> Sale de las estadísticas: sus probabilidades se cumplen, pero no hay cuotas antiguas para comprobar si dan dinero. Está en prueba.</p>
@@ -127,14 +156,15 @@ const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<"
 // Los ids del almacén solo admiten letras, cifras y _ - . ~ : @ +
 const clave = (id) => String(id).normalize("NFKD").replace(/[^\w\-.~:@+]/g, "_").slice(0, 190);
 
-let semana = null, historial = [], marcas = {}, db = null;
+let semana = null, historial = [], marcas = {}, db = null, partidos = [];
 
 function vista(v) {
   for (const b of document.querySelectorAll("nav button")) b.setAttribute("aria-selected", String(b.dataset.v === v));
-  for (const s of ["semana", "historial", "ayuda"]) $("#v-" + s).hidden = s !== v;
+  for (const s of ["calc", "semana", "historial", "ayuda"]) $("#v-" + s).hidden = s !== v;
   try { localStorage.setItem("vista", v); } catch (e) {}
 }
 for (const b of document.querySelectorAll("nav button")) b.onclick = () => vista(b.dataset.v);
+vista("calc");
 try { const v = localStorage.getItem("vista"); if (v) vista(v); } catch (e) {}
 
 function pintarSemana() {
@@ -227,8 +257,96 @@ document.addEventListener("click", async (e) => {
   try { await db.collection("apuestas").doc(k).delete(); } catch (err) {}
 });
 
+
+// ---- Calculadora ----
+const MIN_CUOTA = 1.50;
+function opcionesPartidos() {
+  const q = ($("#buscar").value || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const norm = (t) => t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const lista = partidos.filter((p) => !q || norm(p.local + " " + p.visitante).includes(q));
+  const actual = $("#partido").value;
+  $("#partido").innerHTML = lista.length ? lista.map((p) => {
+    const i = partidos.indexOf(p);
+    return `<option value="${i}">${esc(p.dia)} · ${esc(p.local)} – ${esc(p.visitante)}</option>`;
+  }).join("") : `<option value="">Ningún partido${q ? " con ese nombre" : ""}</option>`;
+  if ([...$("#partido").options].some((o) => o.value === actual)) $("#partido").value = actual;
+  opcionesLineas();
+}
+function opcionesLineas() {
+  const p = partidos[$("#partido").value];
+  const actual = $("#linea").value;
+  $("#linea").innerHTML = p ? Object.entries(p.mercados).map(([m, [prob]]) =>
+    `<option value="${esc(m)}">${esc(textoMercado(m))} · ${coma(prob, 0)} %</option>`).join("") : "";
+  if ([...$("#linea").options].some((o) => o.value === actual)) $("#linea").value = actual;
+  calcular();
+}
+function textoMercado(m) {
+  const n = m.split("+")[1].replace(".", ",");
+  if (m.startsWith("Córners")) return `Más de ${n} córners`;
+  if (m.startsWith("1ª parte")) return `Más de ${n} goles 1ª parte`;
+  return `Más de ${n} goles`;
+}
+function calcular() {
+  const caja = $("#resultado"), p = partidos[$("#partido").value], m = $("#linea").value;
+  if (!p || !m) { caja.innerHTML = ""; return; }
+  const [probModelo, justaMercado] = p.mercados[m];
+  const pm = probModelo / 100, pj = justaMercado ? 1 / justaMercado : null;
+  const prob = pj || pm, margen = pj ? 1.02 : 1.05;
+  const minima = Math.max(MIN_CUOTA, margen / prob);
+  const cuota = parseFloat(($("#cuota").value || "").replace(",", "."));
+  const fuente = pj ? `Precio justo de Pinnacle/Betfair: ${coma(justaMercado)} (${coma(100 * pj, 0)} %). El modelo dice ${coma(probModelo, 0)} %.`
+                    : `Sin precio de Pinnacle/Betfair para esta línea: probabilidad del modelo ${coma(probModelo, 0)} % (en prueba).`;
+  let clase, titulo, texto;
+  if (!(cuota > 1)) {
+    clase = pj ? "v-si" : "v-prueba"; titulo = `Cuota mínima ${coma(minima)}`;
+    texto = "Escribe la cuota que ves en tu casa.";
+  } else {
+    const valor = prob * cuota - 1;
+    if (cuota < MIN_CUOTA) { clase = "v-no"; titulo = "No apuestes"; texto = `Por debajo de ${coma(MIN_CUOTA)}: no entra en el sistema.`; }
+    else if (valor > 0.25) { clase = "v-no"; titulo = "Revisa la cuota"; texto = `Es demasiado buena (+${coma(100 * valor, 0)} %): comprueba que es la misma línea y que es «más de».`; }
+    else if (cuota >= minima && pj) { clase = "v-si"; titulo = "Apuesta"; texto = `Tu casa paga más que el precio justo: +${coma(100 * valor, 1)} % de valor real.`; }
+    else if (cuota >= minima) { clase = "v-prueba"; titulo = "Solo lo ve el modelo"; texto = `+${coma(100 * valor, 1)} % según el modelo, que está en prueba: mejor apúntala sin apostar o con lo mínimo.`; }
+    else { clase = "v-no"; titulo = "No apuestes"; texto = `Paga poco: necesitas al menos ${coma(minima)}.`; }
+  }
+  const puede = cuota > 1;
+  caja.innerHTML = `<div class="veredicto ${clase}"><b>${titulo}</b><p>${texto}</p><p class="meta">${fuente}</p>
+    <p class="meta">${esc(p.local)} – ${esc(p.visitante)}: se esperan ${coma(p.goles, 1)} goles${p.corners ? " y " + coma(p.corners, 1) + " córners" : ""}.</p></div>
+    ${puede && db ? `<div class="fila"><button class="accion" data-guardar="real">La he apostado</button>
+      <button class="secundario" data-guardar="papel">Apuntar sin apostar</button><span class="aviso" id="calc-aviso"></span></div>` : ""}`;
+}
+async function guardarCalc(tipo) {
+  const p = partidos[$("#partido").value], m = $("#linea").value;
+  const cuota = parseFloat(($("#cuota").value || "").replace(",", "."));
+  const [probModelo, justaMercado] = p.mercados[m];
+  const k = clave(`calc_${p.fecha}_${p.local}_${p.visitante}_${m}`);
+  try {
+    await db.collection("apuestas").doc(k).set({cuota, casa: $("#casa").value.trim(), papel: tipo === "papel",
+      partido: `${p.local} – ${p.visitante}`, local: p.local, visitante: p.visitante, mercado: m, fecha: p.fecha,
+      prob_modelo: probModelo, justa_mercado: justaMercado, guardado: new Date().toISOString()});
+    $("#calc-aviso").textContent = tipo === "papel" ? "Apuntada en papel ✓" : "Guardada ✓";
+    try { localStorage.setItem("casa", $("#casa").value.trim()); } catch (e) {}
+  } catch (err) { $("#calc-aviso").textContent = "No se ha podido guardar. Inténtalo en un momento."; }
+}
+function pintarMisApuestas() {
+  const lista = Object.entries(marcas).filter(([k]) => k.startsWith("calc_")).map(([k, v]) => ({k, ...v}))
+    .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""));
+  const color = {ganada: "bien", "medio ganada": "bien", perdida: "mal", "medio perdida": "mal"};
+  $("#mis-apuestas").innerHTML = lista.length ? `<table><tr><th>Fecha</th><th>Partido</th><th>Apuesta</th><th class="n">Cuota</th><th>Estado</th><th></th></tr>${lista.map((a) =>
+    `<tr><td>${esc((a.fecha || "").slice(8, 10) + "/" + (a.fecha || "").slice(5, 7))}</td><td>${esc(a.partido)}</td><td>${esc(textoMercado(a.mercado))}${a.papel ? " · papel" : ""}</td>
+     <td class="n">${coma(a.cuota)}</td><td class="${color[a.estado] || ""}">${esc(a.estado ? a.estado + (a.resultado ? " · " + a.resultado : "") : "pendiente")}</td>
+     <td><button class="quitar" data-quitar="${a.k}">Quitar</button></td></tr>`).join("")}</table>`
+    : `<div class="vacio">Lo que apuntes con la calculadora sale aquí, y el resultado se pone solo cada mañana.</div>`;
+}
+$("#buscar").addEventListener("input", opcionesPartidos);
+$("#partido").addEventListener("change", opcionesLineas);
+$("#linea").addEventListener("change", calcular);
+$("#cuota").addEventListener("input", calcular);
+document.addEventListener("click", (e) => { const t = e.target.dataset && e.target.dataset.guardar; if (t) guardarCalc(t); });
+try { $("#casa").value = localStorage.getItem("casa") || ""; } catch (e) {}
+
 pintarSemana();
 pintarHistorial();
+pintarMisApuestas();
 
 (async () => {
   db = window.claude ? await window.claude.use("db") : null;
@@ -239,6 +357,14 @@ pintarHistorial();
   db.doc("semana/actual").onSnapshot((s) => { semana = s.exists ? s.data() : null; pintarSemana(); pintarHistorial(); },
     () => { $("#semana-nota").textContent = "No se pueden cargar los picks ahora mismo. Vuelve a abrir la página en un rato."; });
   db.doc("historial/todo").onSnapshot((s) => { historial = (s.exists && s.data().picks) || []; pintarHistorial(); }, () => {});
-  db.collection("apuestas").onSnapshot((q) => { marcas = {}; for (const d of q.docs) marcas[d.id] = d.data(); pintarSemana(); }, () => {});
+  db.collection("apuestas").onSnapshot((q) => { marcas = {}; for (const d of q.docs) marcas[d.id] = d.data(); pintarSemana(); pintarMisApuestas(); }, () => {});
+  db.doc("partidos/proximos").onSnapshot((s) => {
+    partidos = (s.exists && s.data().partidos) || [];
+    $("#calc-nota").textContent = partidos.length
+      ? `${partidos.length} partidos de los próximos 7 días (actualizado ${s.data().actualizado}). Elige, escribe la cuota de tu casa y te digo si apostar.`
+      : "Todavía no hay partidos cargados. Se actualizan cada mañana.";
+    opcionesPartidos();
+    calcular();
+  }, () => { $("#calc-nota").textContent = "No se pueden cargar los partidos ahora mismo."; });
 })();
 </script>
