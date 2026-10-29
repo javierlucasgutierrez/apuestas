@@ -125,8 +125,14 @@
 
 <main>
   <section id="v-sistema" hidden>
-    <p class="nota" id="sis-nota">El sistema prueba varias reglas por su cuenta y te da lo que eligen. Solo las ★ han ganado dinero en el pasado.</p>
-    <h2>Lo que elige el sistema</h2>
+    <h2>Pronósticos</h2>
+    <p class="nota">Los oficiales: los que apuestas y los que venderías. Salen de las reglas ★, se publican antes del partido con cuota y stake, y no se tocan después. El historial de abajo se calcula solo.</p>
+    <div id="pron-pend"></div>
+    <div class="totales" id="pron-totales"></div>
+    <div class="tabla" id="pron-meses"></div>
+    <details><summary class="meta" style="padding:10px 0;cursor:pointer">Ver todos los pronósticos ya jugados</summary><div class="tabla" id="pron-hist"></div></details>
+    <h2>Lo que eligen las reglas</h2>
+    <p class="nota" id="sis-nota">El sistema prueba varias reglas por su cuenta. Solo las ★ han ganado dinero en el pasado; de ellas salen los pronósticos.</p>
     <div id="sis-picks"></div>
     <h2>Las reglas y cómo les va</h2>
     <p class="nota">«Pasado»: temporadas 2024/25 a hoy, cada partido calculado antes de jugarse. «En vivo»: desde que el sistema empezó a elegir solo, en papel.</p>
@@ -184,6 +190,7 @@
 
   <section id="v-ayuda" class="ayuda" hidden>
     <div class="boleto">
+      <p><b>Pronósticos.</b> Lo que eligen las reglas ★, uno por partido, con stake de 1 a 10 (10 = 3 % del bank; sale de lo grande que es la ventaja). Se publican cada mañana antes de los partidos y se quedan como están: la cuota es la de Bet365 si llega a la mínima, y si no, la mínima que hay que conseguir. Así el yield del historial es real y se puede enseñar a quien compre. «Copiar para publicar» te da el texto listo para pegar.</p>
       <p><b>Sistema.</b> El programa prueba solo varias reglas de selección (por ejemplo «una casa paga más que Pinnacle», «estadística y modelo ≥70 %»…). Cada una se mide en el pasado y, desde ahora, en vivo: cada día elige sus partidos en papel y se apunta si acierta. Solo las que ganaron dinero en las dos mitades del pasado salen como ★ Recomendada; si en vivo empiezan a perder claramente, pierden la ★. Las demás siguen probándose sin que tengas que hacer nada.</p>
       <p><b>Tabla.</b> Todos los partidos de la semana con la probabilidad de cada «más de» (verde = muy probable, rojo = poco). Debajo, la cuota justa: si tu casa paga más, tiene valor. Con ✓, esa cuota justa es la de Pinnacle/Betfair (la más fiable); sin ✓, la del modelo. Toca una casilla y te lleva a la calculadora con esa apuesta.</p>
       <p><b>Calculadora.</b> Lo más práctico: ves una cuota en Bet365 o Betfair, eliges el partido y la línea, y te dice si apostar. Si hay precio de Pinnacle/Betfair para esa línea, usa ese (es el más fiable) y solo dice «apuesta» si tu casa paga más; si no, usa el modelo y te avisa de que está en prueba. «Apuntar sin apostar» guarda la apuesta en papel para ver con el tiempo si habría ganado.</p>
@@ -462,6 +469,66 @@ $("#estad").addEventListener("click", (e) => {
 
 // ---- El sistema elige ----
 let sistema = null;
+function textoPron(p) {
+  return `⚽ ${p.local} – ${p.visitante}\n🏆 ${p.nombre_liga} · ${p.dia}\n✅ ${textoMercado(p.mercado)} @${coma(p.cuota)}${p.casa === "Bet365" ? " (Bet365)" : ""}\n📊 Stake ${p.stake}/10 · cuota mínima ${coma(p.cuota_minima)}`;
+}
+async function copiar(texto, boton) {
+  try { await navigator.clipboard.writeText(texto); boton.textContent = "Copiado ✓"; }
+  catch (e) {
+    const t = document.createElement("textarea");
+    t.value = texto; t.rows = 6; t.style.width = "100%"; t.style.font = "inherit";
+    boton.replaceWith(t); t.select();
+  }
+}
+function pintarPronosticos() {
+  const pr = sistema && sistema.pronosticos;
+  if (!pr) { $("#pron-pend").innerHTML = ""; $("#pron-totales").innerHTML = ""; $("#pron-meses").innerHTML = ""; $("#pron-hist").innerHTML = ""; return; }
+  const pend = pr.pendientes || [];
+  $("#pron-pend").innerHTML = pend.length ? `<div style="display:grid;gap:12px">${pend.map((p, i) => `
+    <article class="boleto">
+      <div class="fila entre"><div style="min-width:0"><div class="partido">${esc(p.local)} – ${esc(p.visitante)}</div>
+        <div class="meta">${esc(p.dia)} · ${esc(p.nombre_liga)}</div></div><span class="chip c-mercado">Stake ${p.stake}/10</span></div>
+      <div class="apuesta">${esc(textoMercado(p.mercado))}</div>
+      <div class="cuotas">
+        <div class="clave"><b>${coma(p.cuota)}</b><span>${p.casa === "Bet365" ? "Bet365" : "Cuota a conseguir"}</span></div>
+        <div><b>${coma(p.cuota_minima)}</b><span>Mínima</span></div>
+        <div><b>${coma(100 * p.prob, 0)} %</b><span>Probabilidad</span></div>
+      </div>
+      <div class="meta">Publicado ${esc(p.publicado.replace("T", " "))} · ${esc(p.nombre_regla)}</div>
+      <div class="fila"><button class="accion" data-copiar="${i}">Copiar para publicar</button>
+        <button class="secundario" data-calc-pron="${i}">Apuntar mi apuesta</button></div>
+    </article>`).join("")}${pend.length > 1 ? `<button class="secundario" data-copiar="todos">Copiar todos</button>` : ""}</div>`
+    : `<div class="vacio">Ahora no hay pronósticos abiertos. Salen cuando una regla ★ encuentra valor (unas 2-4 por semana, sobre todo cuando se publican las cuotas del fin de semana).</div>`;
+  const t = pr.resumen.total;
+  $("#pron-totales").innerHTML = t.picks ? `
+    <div><b>${t.picks}</b><span>Pronósticos jugados</span></div>
+    <div><b>${Math.round(100 * t.aciertos / t.picks)} %</b><span>Acertados · cuota media ${coma(t.cuota_media)}</span></div>
+    <div><b class="${t.unidades >= 0 ? "bien" : "mal"}">${t.unidades >= 0 ? "+" : ""}${coma(t.unidades)}</b><span>Unidades (apostadas ${t.apostado})</span></div>
+    <div><b class="${t.yield >= 0 ? "bien" : "mal"}">${t.yield >= 0 ? "+" : ""}${coma(t.yield, 1)} %</b><span>Yield · peor racha ${pr.resumen.peor_racha} fallos</span></div>` : "";
+  $("#pron-meses").innerHTML = pr.resumen.por_mes.length ? `<table><tr><th>Mes</th><th class="n">Picks</th><th class="n">Acierto</th><th class="n">Unid.</th><th class="n">Yield</th></tr>${pr.resumen.por_mes.map((m) =>
+    `<tr><td>${esc(m.mes)}</td><td class="n">${m.picks}</td><td class="n">${Math.round(100 * m.aciertos / m.picks)} %</td><td class="n ${m.unidades >= 0 ? "bien" : "mal"}">${m.unidades >= 0 ? "+" : ""}${coma(m.unidades)}</td><td class="n">${m.yield >= 0 ? "+" : ""}${coma(m.yield, 1)} %</td></tr>`).join("")}</table>` : "";
+  const color = {ganada: "bien", "medio ganada": "bien", perdida: "mal", "medio perdida": "mal"};
+  $("#pron-hist").innerHTML = (pr.ultimos || []).length ? `<table><tr><th>Fecha</th><th>Partido</th><th class="n">Cuota</th><th class="n">Stake</th><th>Resultado</th><th class="n">Unid.</th></tr>${pr.ultimos.map((p) =>
+    `<tr><td>${esc(p.fecha.slice(8, 10) + "/" + p.fecha.slice(5, 7))}</td><td>${esc(p.local)} – ${esc(p.visitante)}<div class="meta">${esc(textoMercado(p.mercado))}</div></td><td class="n">${coma(p.cuota)}</td><td class="n">${p.stake}</td>
+     <td class="${color[p.estado] || ""}">${esc(p.estado)} · ${esc(p.resultado || "")}</td><td class="n">${p.unidades >= 0 ? "+" : ""}${coma(p.unidades)}</td></tr>`).join("")}</table>` : `<div class="vacio">Aquí saldrán todos los pronósticos jugados, uno a uno.</div>`;
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-copiar]");
+  if (b) {
+    const pend = sistema.pronosticos.pendientes;
+    copiar(b.dataset.copiar === "todos" ? pend.map(textoPron).join("\n\n") : textoPron(pend[b.dataset.copiar]), b);
+    return;
+  }
+  const c = e.target.closest("[data-calc-pron]");
+  if (!c) return;
+  const p = sistema.pronosticos.pendientes[c.dataset.calcPron];
+  const idx = partidos.findIndex((x) => x.fecha === p.fecha && x.local === p.local);
+  if (idx < 0) return;
+  $("#buscar").value = ""; opcionesPartidos();
+  $("#partido").value = idx; opcionesLineas(); $("#linea").value = p.mercado;
+  $("#cuota").value = String(p.cuota).replace(".", ","); calcular(); vista("calc");
+});
+
 function pintarSistema() {
   if (!sistema) { $("#sis-picks").innerHTML = `<div class="vacio">Cargando…</div>`; return; }
   const reglas = Object.fromEntries(sistema.ranking.map((r) => [r.id, r]));
@@ -517,7 +584,7 @@ pintarSistema();
     () => { $("#semana-nota").textContent = "No se pueden cargar los picks ahora mismo. Vuelve a abrir la página en un rato."; });
   db.doc("historial/todo").onSnapshot((s) => { historial = (s.exists && s.data().picks) || []; pintarHistorial(); }, () => {});
   db.collection("apuestas").onSnapshot((q) => { marcas = {}; for (const d of q.docs) marcas[d.id] = d.data(); pintarSemana(); pintarMisApuestas(); pintarSistema(); }, () => {});
-  db.doc("sistema/actual").onSnapshot((s) => { sistema = s.exists ? s.data() : null; pintarSistema(); },
+  db.doc("sistema/actual").onSnapshot((s) => { sistema = s.exists ? s.data() : null; pintarSistema(); pintarPronosticos(); },
     () => { $("#sis-picks").innerHTML = `<div class="vacio">No se puede cargar ahora mismo.</div>`; });
   db.doc("partidos/proximos").onSnapshot((s) => {
     partidos = (s.exists && s.data().partidos) || [];

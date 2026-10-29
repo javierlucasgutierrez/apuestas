@@ -25,11 +25,15 @@ import app as cli
 import panel
 from predictor.datos import cargar_varios
 from predictor.descargar import LIGAS, expandir_ligas
-from predictor.registro import estado_de
+from datetime import datetime
+
+from predictor.registro import estado_de, stake_10
 from predictor.valor import _cuota, _fecha, leer_filas, liquidar, precio_justo
 
 VIVO = os.path.join(cli.CARPETA, "datos", "estrategias_vivo.json")
 PASADO = os.path.join(cli.CARPETA, "datos", "estrategias_pasado.json")
+# Los pronósticos «oficiales» (los que se apuestan y se venderían): una vez publicados no se tocan.
+PRONOSTICOS = os.path.join(cli.CARPETA, "datos", "pronosticos.json")
 MAXIMO_POR_DIA = 3  # por regla, los mejores de cada día
 DIAS_VISTA = 3
 LINEAS_FRECUENCIA = {"Goles +1.5": ("g", 1.5), "Goles +2.5": ("g", 2.5), "Goles +3.5": ("g", 3.5),
@@ -172,6 +176,7 @@ def liquidar_vivo() -> int:
                 indice[(_fecha(f["Date"]).isoformat(), f["HomeTeam"], f["AwayTeam"])] = f
             except ValueError:
                 pass
+    liquidar_pronosticos(indice)
     registro, hechos = leer(VIVO, []), 0
     for r in registro:
         if r["acierto"] is not None:
@@ -187,6 +192,71 @@ def liquidar_vivo() -> int:
         hechos += 1
     escribir(VIVO, registro)
     return hechos
+
+
+def publicar(elegidos: list[dict], recomendadas: set[str]) -> int:
+    """Convierte en pronóstico oficial lo que eligen las reglas ★ (uno por partido).
+
+    Cuota publicada: la de Bet365 si llega a la mínima; si no, la mínima (lo que hay que conseguir).
+    Así el historial se calcula con cuotas que de verdad se pueden coger, no con la mejor del mercado.
+    Stake 1-10: un cuarto de Kelly con la probabilidad justa, con tope del 3 % del bank (= 10).
+    """
+    pron = leer(PRONOSTICOS, [])
+    vistos = {(p["fecha"], p["local"]) for p in pron}
+    nuevos = 0
+    orden = {r["id"]: i for i, r in enumerate(REGLAS)}
+    for e in sorted(elegidos, key=lambda e: orden[e["regla"]]):
+        if e["regla"] not in recomendadas or not e.get("pm") or (e["fecha"], e["local"]) in vistos:
+            continue
+        minima = round(max(1.50, 1.02 / e["pm"]), 2)
+        cuota, casa = (e["b365"], "Bet365") if e.get("b365") and e["b365"] >= minima else (minima, "mínima")
+        kelly = (e["pm"] * cuota - 1) / (cuota - 1)
+        pron.append({"id": f"{e['fecha']}_{e['local']}_{e['mercado']}", "publicado": datetime.now().isoformat(timespec="minutes"),
+                     "fecha": e["fecha"], "liga": e["liga"], "local": e["local"], "visitante": e["visitante"],
+                     "mercado": e["mercado"], "cuota": cuota, "casa": casa, "cuota_minima": minima,
+                     "prob": round(e["pm"], 4), "stake": stake_10(min(0.25 * kelly, 0.03)), "regla": e["regla"],
+                     "estado": "pendiente", "resultado": None, "unidades": None})
+        vistos.add((e["fecha"], e["local"]))
+        nuevos += 1
+    escribir(PRONOSTICOS, pron)
+    return nuevos
+
+
+def liquidar_pronosticos(indice: dict) -> int:
+    pron, hechos = leer(PRONOSTICOS, []), 0
+    for p in pron:
+        if p["estado"] != "pendiente":
+            continue
+        fila = indice.get((p["fecha"], p["local"], p["visitante"]))
+        if not fila:
+            continue
+        beneficio, _ = liquidar(fila, p["mercado"], p["cuota"])
+        if beneficio is None:
+            continue
+        p["estado"] = estado_de(beneficio, p["cuota"])
+        p["resultado"] = f"{fila['FTHG']}-{fila['FTAG']}"
+        p["unidades"] = round(beneficio * p["stake"], 2)
+        hechos += 1
+    escribir(PRONOSTICOS, pron)
+    return hechos
+
+
+def resumen_pronosticos(pron: list[dict]) -> dict:
+    """El historial que se enseña a quien compra: unidades, yield (ganado / apostado) y por mes."""
+    def bloque(lista):
+        apostado = sum(p["stake"] for p in lista)
+        ganado = sum(p["unidades"] for p in lista)
+        return {"picks": len(lista), "aciertos": sum(p["unidades"] > 0 for p in lista), "apostado": apostado,
+                "unidades": round(ganado, 2), "yield": round(100 * ganado / apostado, 1) if apostado else 0.0,
+                "cuota_media": round(sum(p["cuota"] for p in lista) / len(lista), 2) if lista else 0}
+    hechos = [p for p in pron if p["estado"] != "pendiente" and p["unidades"] is not None]
+    meses = sorted({p["fecha"][:7] for p in hechos}, reverse=True)
+    peor, racha = 0, 0
+    for p in sorted(hechos, key=lambda p: p["fecha"]):
+        racha = racha + 1 if p["unidades"] < 0 else 0
+        peor = max(peor, racha)
+    return {"total": bloque(hechos), "por_mes": [{"mes": m, **bloque([p for p in hechos if p["fecha"][:7] == m])} for m in meses],
+            "peor_racha": peor}
 
 
 def resumen(registros: list[dict]) -> dict:
@@ -237,6 +307,13 @@ def main() -> None:
             if clave not in locales or (locales[clave]["acierto"] is None and r.get("acierto") is not None):
                 locales[clave] = r
         escribir(VIVO, sorted(locales.values(), key=lambda r: (r["fecha"], r["regla"])))
+        with open(args.importar, encoding="utf-8") as f:
+            remotos = json.load(f).get("pronosticos", [])
+        pron = {p["id"]: p for p in leer(PRONOSTICOS, [])}
+        for p in remotos:  # lo publicado no se cambia: solo se añade lo que falte o su resultado
+            if p["id"] not in pron or (pron[p["id"]]["estado"] == "pendiente" and p["estado"] != "pendiente"):
+                pron[p["id"]] = p
+        escribir(PRONOSTICOS, sorted(pron.values(), key=lambda p: (p["publicado"], p["fecha"])))
     if args.liquidar:
         print(f"Liquidadas: {liquidar_vivo()}")
     hoy = date.today()
@@ -244,6 +321,11 @@ def main() -> None:
     if args.guardar:
         print(f"Nuevas selecciones guardadas: {guardar(elegidos)}")
     filas = ranking()
+    if args.guardar:
+        nuevos = publicar(elegidos, {f["id"] for f in filas if f["recomendada"]})
+        print(f"Pronósticos nuevos publicados: {nuevos}")
+        for p in leer(PRONOSTICOS, [])[-nuevos:] if nuevos else []:
+            print(f"  {p['fecha']} {p['local']} - {p['visitante']}: {p['mercado']} @{p['cuota']} ({p['casa']}) stake {p['stake']}")
     for f in filas:
         print(f"{'★' if f['recomendada'] else ' '} {f['nombre']:<56} pasado {f['pasado']} · vivo {f['vivo']}")
     if args.json:
@@ -256,11 +338,16 @@ def main() -> None:
                            for e in leer(VIVO, []) if e["fecha"] >= hoy_s and e["acierto"] is None),
                           key=lambda e: (not e["recomendada"], e["fecha"], e["regla"]))
         ultimos = [r for r in leer(VIVO, []) if r["acierto"] is not None][-300:]
+        pron = leer(PRONOSTICOS, [])
+        pendientes = [{**p, "dia": panel.dia(date.fromisoformat(p["fecha"])), "nombre_liga": cli.NOMBRE_LIGA.get(p["liga"], p["liga"]),
+                       "nombre_regla": nombres[p["regla"]]} for p in pron if p["estado"] == "pendiente"]
         escribir(args.json, {"actualizado": hoy.strftime("%d/%m/%Y"), "ranking": filas, "proximos": proximos,
-                             "ultimos": ultimos})
+                             "ultimos": ultimos,
+                             "pronosticos": {"pendientes": pendientes, "resumen": resumen_pronosticos(pron),
+                                             "ultimos": [p for p in pron if p["estado"] != "pendiente"][-100:][::-1]}})
         # Copia del registro para la página (los últimos 1500): de ahí se recupera si falla el push.
         with open(os.path.join(os.path.dirname(args.json), "sistema_vivo.json"), "w", encoding="utf-8") as f:
-            json.dump({"registro": leer(VIVO, [])[-1500:]}, f, ensure_ascii=False)
+            json.dump({"registro": leer(VIVO, [])[-1500:], "pronosticos": leer(PRONOSTICOS, [])}, f, ensure_ascii=False)
 
 
 if __name__ == "__main__":
