@@ -114,9 +114,9 @@
     <h1>Más de · goles y córners</h1>
     <div class="sub" id="sub">Solo «más de» goles y córners · ligas principales de Europa</div>
     <nav role="tablist">
+      <button role="tab" id="t-sistema" aria-selected="false" data-v="sistema">Sistema</button>
       <button role="tab" id="t-tabla" aria-selected="false" data-v="tabla">Tabla</button>
       <button role="tab" id="t-calc" aria-selected="false" data-v="calc">Calcular</button>
-      <button role="tab" id="t-semana" aria-selected="true" data-v="semana">Picks</button>
       <button role="tab" id="t-historial" aria-selected="false" data-v="historial">Historial</button>
       <button role="tab" id="t-ayuda" aria-selected="false" data-v="ayuda">Ayuda</button>
     </nav>
@@ -124,6 +124,16 @@
 </header>
 
 <main>
+  <section id="v-sistema" hidden>
+    <p class="nota" id="sis-nota">El sistema prueba varias reglas por su cuenta y te da lo que eligen. Solo las ★ han ganado dinero en el pasado.</p>
+    <h2>Lo que elige el sistema</h2>
+    <div id="sis-picks"></div>
+    <h2>Las reglas y cómo les va</h2>
+    <p class="nota">«Pasado»: temporadas 2024/25 a hoy, cada partido calculado antes de jugarse. «En vivo»: desde que el sistema empezó a elegir solo, en papel.</p>
+    <div class="tabla" id="sis-reglas"></div>
+    <h2>Otros picks del modelo</h2>
+  </section>
+
   <section id="v-tabla" hidden>
     <div class="grupo" id="grupo">
       <button data-g="goles" aria-pressed="true">Goles</button>
@@ -174,6 +184,7 @@
 
   <section id="v-ayuda" class="ayuda" hidden>
     <div class="boleto">
+      <p><b>Sistema.</b> El programa prueba solo varias reglas de selección (por ejemplo «una casa paga más que Pinnacle», «estadística y modelo ≥70 %»…). Cada una se mide en el pasado y, desde ahora, en vivo: cada día elige sus partidos en papel y se apunta si acierta. Solo las que ganaron dinero en las dos mitades del pasado salen como ★ Recomendada; si en vivo empiezan a perder claramente, pierden la ★. Las demás siguen probándose sin que tengas que hacer nada.</p>
       <p><b>Tabla.</b> Todos los partidos de la semana con la probabilidad de cada «más de» (verde = muy probable, rojo = poco). Debajo, la cuota justa: si tu casa paga más, tiene valor. Con ✓, esa cuota justa es la de Pinnacle/Betfair (la más fiable); sin ✓, la del modelo. Toca una casilla y te lleva a la calculadora con esa apuesta.</p>
       <p><b>Calculadora.</b> Lo más práctico: ves una cuota en Bet365 o Betfair, eliges el partido y la línea, y te dice si apostar. Si hay precio de Pinnacle/Betfair para esa línea, usa ese (es el más fiable) y solo dice «apuesta» si tu casa paga más; si no, usa el modelo y te avisa de que está en prueba. «Apuntar sin apostar» guarda la apuesta en papel para ver con el tiempo si habría ganado.</p>
       <p><b>Qué es.</b> Cada semana, en la nube, el programa baja los datos de las ligas principales (1ª y 2ª de Inglaterra, España, Alemania, Italia y Francia, más Países Bajos y Escocia) y elige las mejores oportunidades de «más de» goles o córners (como mucho 10 a la vez) con 3-4 días de antelación. Como mucho una por partido.</p>
@@ -198,11 +209,12 @@ let semana = null, historial = [], marcas = {}, db = null, partidos = [], extra 
 
 function vista(v) {
   for (const b of document.querySelectorAll("nav button")) b.setAttribute("aria-selected", String(b.dataset.v === v));
-  for (const s of ["tabla", "calc", "semana", "historial", "ayuda"]) $("#v-" + s).hidden = s !== v;
+  for (const s of ["sistema", "tabla", "calc", "historial", "ayuda"]) $("#v-" + s).hidden = s !== v;
+  $("#v-semana").hidden = v !== "sistema";
   try { localStorage.setItem("vista", v); } catch (e) {}
 }
 for (const b of document.querySelectorAll("nav button")) b.onclick = () => vista(b.dataset.v);
-vista("tabla");
+vista("sistema");
 try { const v = localStorage.getItem("vista"); if (v) vista(v); } catch (e) {}
 
 function pintarSemana() {
@@ -448,9 +460,52 @@ $("#estad").addEventListener("click", (e) => {
   calcular(); vista("calc"); $("#cuota").focus();
 });
 
+// ---- El sistema elige ----
+let sistema = null;
+function pintarSistema() {
+  if (!sistema) { $("#sis-picks").innerHTML = `<div class="vacio">Cargando…</div>`; return; }
+  const reglas = Object.fromEntries(sistema.ranking.map((r) => [r.id, r]));
+  const recos = sistema.proximos.filter((p) => p.recomendada), prueba = sistema.proximos.filter((p) => !p.recomendada);
+  const tarjeta = (p) => {
+    const r = reglas[p.regla];
+    const k = clave(`calc_${p.fecha}_${p.local}_${p.visitante}_${p.mercado}`);
+    const idx = partidos.findIndex((x) => x.fecha === p.fecha && x.local === p.local);
+    const minima = p.pm ? Math.max(1.5, 1.02 / p.pm) : Math.max(1.5, 1.05 / p.prob);
+    return `<article class="boleto ${marcas[k] ? "hecha" : ""}">
+      <div class="fila entre"><div style="min-width:0"><div class="partido">${esc(p.local)} – ${esc(p.visitante)}</div>
+        <div class="meta">${esc(p.dia)} · ${esc(p.nombre_liga)}</div></div>
+        ${p.recomendada ? `<span class="chip c-mercado">★ Recomendada</span>` : `<span class="chip c-modelo">En prueba</span>`}</div>
+      <div class="apuesta">${esc(textoMercado(p.mercado))} <span class="meta">· ${coma(100 * p.prob, 0)} %${p.frec != null ? " · estadística " + coma(100 * p.frec, 0) + " %" : ""}</span></div>
+      <div class="cuotas">
+        <div class="clave"><b>${coma(minima)}</b><span>Cuota mínima</span></div>
+        <div><b>${p.pm ? coma(1 / p.pm) : coma(1 / p.prob)}</b><span>Cuota justa${p.pm ? " ✓" : ""}</span></div>
+        <div><b>${p.cuota ? coma(p.cuota) : "–"}</b><span>Mejor vista</span></div>
+      </div>
+      <div class="meta">Regla: ${esc(r ? r.nombre : p.regla)}</div>
+      ${idx >= 0 ? `<button class="secundario" data-calc="${idx}" data-m="${esc(p.mercado)}">${marcas[k] ? "✓ Apuntada · ver" : "Apostar / apuntar"}</button>` : ""}
+    </article>`;
+  };
+  $("#sis-picks").innerHTML = (recos.length ? recos.map(tarjeta).join("") : `<div class="vacio">Ahora mismo ninguna regla recomendada encuentra apuesta. Es normal: salen cuando hay cuotas y una casa paga más de lo justo (unas 2-4 por semana).</div>`)
+    + (prueba.length ? `<details><summary class="meta" style="padding:10px 0;cursor:pointer">Ver ${prueba.length} de reglas en prueba (sin dinero demostrado)</summary><div style="display:grid;gap:12px">${prueba.map(tarjeta).join("")}</div></details>` : "");
+  const celda = (x, dinero) => !x || !x.n ? "–" : `${x.n} · ${coma(x.acierto, 0)} %` + (dinero && x.yield != null
+    ? ` · <b class="${x.yield >= 0 ? "bien" : "mal"}">${x.yield >= 0 ? "+" : ""}${coma(x.yield, 1)} %</b>` : x.cuota_necesaria ? ` · pide ${coma(x.cuota_necesaria)}` : "");
+  $("#sis-reglas").innerHTML = `<table><tr><th>Regla</th><th>Pasado</th><th>En vivo</th></tr>${sistema.ranking.map((r) =>
+    `<tr><td style="white-space:normal;min-width:160px">${r.recomendada ? "★ " : ""}${esc(r.nombre)}<div class="meta">${esc(textoMercado(r.mercado))}</div></td>
+     <td>${celda(r.pasado, r.dinero)}</td><td>${celda(r.vivo, r.dinero)}</td></tr>`).join("")}</table>
+    <p class="nota" style="padding:8px 10px">Formato: apuestas · acierto · rentabilidad. «Pide X»: reglas sin cuotas antiguas; para ganar, la casa tendría que pagar más de X.</p>`;
+}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-calc]");
+  if (!b) return;
+  $("#buscar").value = ""; opcionesPartidos();
+  $("#partido").value = b.dataset.calc; opcionesLineas();
+  $("#linea").value = b.dataset.m; calcular(); vista("calc"); $("#cuota").focus();
+});
+
 pintarSemana();
 pintarHistorial();
 pintarMisApuestas();
+pintarSistema();
 
 (async () => {
   db = window.claude ? await window.claude.use("db") : null;
@@ -461,7 +516,9 @@ pintarMisApuestas();
   db.doc("semana/actual").onSnapshot((s) => { semana = s.exists ? s.data() : null; pintarSemana(); pintarHistorial(); },
     () => { $("#semana-nota").textContent = "No se pueden cargar los picks ahora mismo. Vuelve a abrir la página en un rato."; });
   db.doc("historial/todo").onSnapshot((s) => { historial = (s.exists && s.data().picks) || []; pintarHistorial(); }, () => {});
-  db.collection("apuestas").onSnapshot((q) => { marcas = {}; for (const d of q.docs) marcas[d.id] = d.data(); pintarSemana(); pintarMisApuestas(); }, () => {});
+  db.collection("apuestas").onSnapshot((q) => { marcas = {}; for (const d of q.docs) marcas[d.id] = d.data(); pintarSemana(); pintarMisApuestas(); pintarSistema(); }, () => {});
+  db.doc("sistema/actual").onSnapshot((s) => { sistema = s.exists ? s.data() : null; pintarSistema(); },
+    () => { $("#sis-picks").innerHTML = `<div class="vacio">No se puede cargar ahora mismo.</div>`; });
   db.doc("partidos/proximos").onSnapshot((s) => {
     partidos = (s.exists && s.data().partidos) || [];
     extra = s.exists ? s.data() : null;
@@ -473,6 +530,7 @@ pintarMisApuestas();
     calcular();
     rellenarFiltros();
     pintarTabla();
+    pintarSistema();
   }, () => { $("#calc-nota").textContent = "No se pueden cargar los partidos ahora mismo."; });
 })();
 </script>

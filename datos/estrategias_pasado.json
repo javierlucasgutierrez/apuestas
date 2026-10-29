@@ -1,0 +1,265 @@
+{
+ "valor1": {
+  "total": {
+   "n": 225,
+   "acierto": 52.0,
+   "esperado": 51.6,
+   "cuota_necesaria": 1.92,
+   "yield": 4.9,
+   "n_dinero": 225
+  },
+  "mitades": [
+   {
+    "n": 131,
+    "acierto": 52.7,
+    "esperado": 51.6,
+    "cuota_necesaria": 1.9,
+    "yield": 5.2,
+    "n_dinero": 131
+   },
+   {
+    "n": 94,
+    "acierto": 51.1,
+    "esperado": 51.5,
+    "cuota_necesaria": 1.96,
+    "yield": 4.6,
+    "n_dinero": 94
+   }
+  ]
+ },
+ "valor3": {
+  "total": {
+   "n": 61,
+   "acierto": 57.4,
+   "esperado": 52.4,
+   "cuota_necesaria": 1.74,
+   "yield": 19.5,
+   "n_dinero": 61
+  },
+  "mitades": [
+   {
+    "n": 16,
+    "acierto": 87.5,
+    "esperado": 51.1,
+    "cuota_necesaria": 1.14,
+    "yield": 78.1,
+    "n_dinero": 16
+   },
+   {
+    "n": 45,
+    "acierto": 46.7,
+    "esperado": 52.9,
+    "cuota_necesaria": 2.14,
+    "yield": -1.4,
+    "n_dinero": 45
+   }
+  ]
+ },
+ "valor_y_modelo": {
+  "total": {
+   "n": 104,
+   "acierto": 52.9,
+   "esperado": 53.7,
+   "cuota_necesaria": 1.89,
+   "yield": 9.9,
+   "n_dinero": 104
+  },
+  "mitades": [
+   {
+    "n": 62,
+    "acierto": 53.2,
+    "esperado": 53.8,
+    "cuota_necesaria": 1.88,
+    "yield": 9.6,
+    "n_dinero": 62
+   },
+   {
+    "n": 42,
+    "acierto": 52.4,
+    "esperado": 53.5,
+    "cuota_necesaria": 1.91,
+    "yield": 10.3,
+    "n_dinero": 42
+   }
+  ]
+ },
+ "modelo_valor": {
+  "total": {
+   "n": 3161,
+   "acierto": 45.9,
+   "esperado": 52.9,
+   "cuota_necesaria": 2.18,
+   "yield": -3.5,
+   "n_dinero": 3161
+  },
+  "mitades": [
+   {
+    "n": 1673,
+    "acierto": 45.7,
+    "esperado": 53.3,
+    "cuota_necesaria": 2.19,
+    "yield": -4.4,
+    "n_dinero": 1673
+   },
+   {
+    "n": 1488,
+    "acierto": 46.1,
+    "esperado": 52.5,
+    "cuota_necesaria": 2.17,
+    "yield": -2.6,
+    "n_dinero": 1488
+   }
+  ]
+ },
+ "tres": {
+  "total": {
+   "n": 321,
+   "acierto": 63.6,
+   "esperado": 62.8,
+   "cuota_necesaria": 1.57,
+   "yield": -0.8,
+   "n_dinero": 321
+  },
+  "mitades": [
+   {
+    "n": 186,
+    "acierto": 66.7,
+    "esperado": 63.3,
+    "cuota_necesaria": 1.5,
+    "yield": 4.3,
+    "n_dinero": 186
+   },
+   {
+    "n": 135,
+    "acierto": 59.3,
+    "esperado": 62.2,
+    "cuota_necesaria": 1.69,
+    "yield": -7.8,
+    "n_dinero": 135
+   }
+  ]
+ },
+ "estad70": {
+  "total": {
+   "n": 31,
+   "acierto": 71.0,
+   "esperado": 66.7,
+   "cuota_necesaria": 1.41,
+   "yield": 11.2,
+   "n_dinero": 31
+  },
+  "mitades": [
+   {
+    "n": 27,
+    "acierto": 74.1,
+    "esperado": 66.8,
+    "cuota_necesaria": 1.35,
+    "yield": 16.4,
+    "n_dinero": 27
+   },
+   {
+    "n": 4,
+    "acierto": 50.0,
+    "esperado": 66.3,
+    "cuota_necesaria": 2.0,
+    "yield": -23.8,
+    "n_dinero": 4
+   }
+  ]
+ },
+ "g15": {
+  "total": {
+   "n": 2726,
+   "acierto": 82.6,
+   "esperado": 82.7,
+   "cuota_necesaria": 1.21
+  },
+  "mitades": [
+   {
+    "n": 1370,
+    "acierto": 82.3,
+    "esperado": 82.9,
+    "cuota_necesaria": 1.22
+   },
+   {
+    "n": 1356,
+    "acierto": 83.0,
+    "esperado": 82.4,
+    "cuota_necesaria": 1.2
+   }
+  ]
+ },
+ "g35": {
+  "total": {
+   "n": 172,
+   "acierto": 51.7,
+   "esperado": 48.6,
+   "cuota_necesaria": 1.93
+  },
+  "mitades": [
+   {
+    "n": 94,
+    "acierto": 51.1,
+    "esperado": 48.0,
+    "cuota_necesaria": 1.96
+   },
+   {
+    "n": 78,
+    "acierto": 52.6,
+    "esperado": 49.2,
+    "cuota_necesaria": 1.9
+   }
+  ]
+ },
+ "c85": {
+  "total": {
+   "n": 1114,
+   "acierto": 72.1,
+   "esperado": 72.9,
+   "cuota_necesaria": 1.39
+  },
+  "mitades": [
+   {
+    "n": 687,
+    "acierto": 71.2,
+    "esperado": 73.3,
+    "cuota_necesaria": 1.4
+   },
+   {
+    "n": 427,
+    "acierto": 73.5,
+    "esperado": 72.2,
+    "cuota_necesaria": 1.36
+   }
+  ]
+ },
+ "c95": {
+  "total": {
+   "n": 734,
+   "acierto": 61.2,
+   "esperado": 62.9,
+   "cuota_necesaria": 1.63
+  },
+  "mitades": [
+   {
+    "n": 504,
+    "acierto": 60.5,
+    "esperado": 63.2,
+    "cuota_necesaria": 1.65
+   },
+   {
+    "n": 230,
+    "acierto": 62.6,
+    "esperado": 62.2,
+    "cuota_necesaria": 1.6
+   }
+  ]
+ },
+ "t05": {
+  "total": {
+   "n": 0
+  },
+  "mitades": [],
+  "nota": "sin datos del pasado"
+ }
+}
