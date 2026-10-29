@@ -32,7 +32,21 @@ LIGAS = {
     "grecia": ("G1", "Super League (Grecia)"),
 }
 GRANDES = ["premier", "laliga", "seriea", "bundesliga", "ligue1"]
+# Primera y segunda de los países grandes, más Países Bajos y Escocia: la selección recomendada.
+PRINCIPALES = ["premier", "championship", "laliga", "laliga2", "bundesliga", "bundesliga2",
+               "seriea", "serieb", "ligue1", "ligue2", "eredivisie", "escocia"]
 TODAS = list(LIGAS)
+GRUPOS_LIGAS = {"todas": TODAS, "principales": PRINCIPALES, "grandes": GRANDES}
+
+
+def expandir_ligas(ligas: list[str]) -> list[str]:
+    """Convierte grupos ("principales", "todas", "grandes") en la lista de ligas."""
+    resultado = []
+    for liga in ligas:
+        for l in GRUPOS_LIGAS.get(liga, [liga]):
+            if l not in resultado:
+                resultado.append(l)
+    return resultado
 
 URL_TEMPORADA = "https://www.football-data.co.uk/mmz4281/{temporada}/{codigo}.csv"
 URL_PROXIMOS = "https://www.football-data.co.uk/fixtures.csv"

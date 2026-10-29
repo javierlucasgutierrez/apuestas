@@ -27,7 +27,7 @@ from predictor.valor import CASAS, Oportunidad, leer_filas, precio_justo
 
 PUERTO = 8765
 PREFERENCIAS_POR_DEFECTO = {"bank": 50.0, "perfil": "goles", "metodo": "plano", "plano": 0.01,
-                            "kelly": 0.25, "tope": 0.03, "ligas": ["todas"], "casas": ["Max"], "dias": 7}
+                            "kelly": 0.25, "tope": 0.03, "ligas": ["principales"], "casas": ["Max"], "dias": 7}
 
 
 # ------------------------------------------------------------------ utilidades
@@ -100,9 +100,9 @@ def datos_inicio() -> dict:
     }
 
 
-def datos_picks(dias: int) -> dict:
+def datos_picks(dias: int, desde: date | None = None) -> dict:
     prefs = preferencias()
-    hoy = date.today()
+    hoy = desde or date.today()
     filas = [f for f in leer_filas([archivo_proximos(cli.DESCARGAS)]) if not f.get("FTHG")]
     elegidas = [o for _, o in apuestas_del_sistema(filas, prefs["perfil"], prefs["casas"])
                 if hoy <= o.fecha <= hoy + timedelta(days=dias)]
@@ -165,11 +165,11 @@ def proximos_partidos(modelo: Predictor) -> list[tuple]:
     return resultado
 
 
-def datos_modelo(dias: int, tipo: str) -> dict:
+def datos_modelo(dias: int, tipo: str, desde: date | None = None) -> dict:
     """Selecciones de goles o córners según el modelo, con su cuota mínima."""
     reglas = MODELO[tipo]
     prefs = preferencias()
-    hoy = date.today()
+    hoy = desde or date.today()
     modelo = predictor()
     partidos = proximos_partidos(modelo)
     registro = Registro(cli.BASE_DATOS)
@@ -367,7 +367,7 @@ def guardar_config(d: dict) -> dict:
         prefs["perfil"] = d["perfil"] if d["perfil"] in PERFILES else "goles"
         prefs["metodo"] = "kelly" if d["metodo"] == "kelly" else "plano"
         prefs["plano"] = min(max(float(str(d["plano"]).replace(",", ".")) / 100, 0.002), 0.03)
-        prefs["ligas"] = ["todas"] if d["ligas"] == "todas" else GRANDES
+        prefs["ligas"] = [d["ligas"]] if d["ligas"] in ("todas", "principales", "grandes") else ["principales"]
         prefs.setdefault("casas", ["Max"])
         if d.get("clave_odds"):
             prefs["clave_odds"] = d["clave_odds"].strip()
@@ -438,6 +438,9 @@ class Manejador(BaseHTTPRequestHandler):
                 return self._responder(_tarea)
             if not hay_datos():
                 return self._responder({"error": "Primero pulsa «Actualizar datos» en Inicio."})
+            if url.path == "/api/top10":
+                import semana
+                return self._responder(semana.top10(date.today(), dias))
             if url.path == "/api/picks":
                 return self._responder(datos_picks(dias))
             if url.path == "/api/partidos":

@@ -22,7 +22,7 @@ from predictor.backtest import backtest
 from predictor.cuotas import kelly, normalizar_mercado, seleccionar
 from predictor.datos import cara_a_cara, cargar_csv, cargar_varios, guardar_csv
 from predictor.cuotas_vivo import archivo_proximos, descargar_cuotas
-from predictor.descargar import GRANDES, LIGAS, TODAS, descargar
+from predictor.descargar import GRANDES, GRUPOS_LIGAS, LIGAS, descargar, expandir_ligas
 from predictor.ejemplo import generar_liga
 from predictor.mercados import Ajustes, Predictor, familia
 from predictor.modelo import buscar_equipo
@@ -162,13 +162,13 @@ def bajar_cuotas_vivo(ligas: list[str]) -> None:
     clave = clave_odds()
     if not clave:
         return
-    codigos = [LIGAS[l][0] for l in (TODAS if "todas" in ligas else ligas)]
+    codigos = [LIGAS[l][0] for l in expandir_ligas(ligas)]
     descargar_cuotas(clave, codigos, os.path.join(DESCARGAS, "proximos_vivo.csv"))
 
 
 def orden_descargar(args) -> None:
     print("Descargando de football-data.co.uk...")
-    descargar(args.carpeta, TODAS if "todas" in args.ligas else args.ligas, args.temporadas)
+    descargar(args.carpeta, expandir_ligas(args.ligas), args.temporadas)
     bajar_cuotas_vivo(args.ligas)
     print(f"Listo. Datos en {os.path.relpath(args.carpeta)}")
 
@@ -448,7 +448,7 @@ def orden_configurar(args) -> None:
 def orden_actualizar(args) -> None:
     ligas = args.ligas or GRANDES
     print("1) Descargando datos nuevos de football-data.co.uk...")
-    descargar(DESCARGAS, TODAS if "todas" in ligas else ligas, args.temporadas)
+    descargar(DESCARGAS, expandir_ligas(ligas), args.temporadas)
     bajar_cuotas_vivo(ligas)
     print("\n2) Liquidando picks pendientes...")
     registro = Registro(BASE_DATOS)
@@ -648,8 +648,8 @@ def main(argv=None) -> None:
     sub = parser.add_subparsers(dest="orden", required=True)
 
     p = sub.add_parser("descargar", help="Baja resultados, córners y cuotas de las grandes ligas.")
-    p.add_argument("--ligas", nargs="+", default=GRANDES, choices=list(LIGAS) + ["todas"],
-                   help=f"Por defecto: {' '.join(GRANDES)}. 'todas' baja las {len(LIGAS)} ligas.")
+    p.add_argument("--ligas", nargs="+", default=GRANDES, choices=list(LIGAS) + list(GRUPOS_LIGAS),
+                   help=f"Por defecto: {' '.join(GRANDES)}. Grupos: principales, todas, grandes.")
     p.add_argument("--temporadas", type=int, default=4, help="Cuántas temporadas (4).")
     p.add_argument("--carpeta", default=DESCARGAS)
     p.set_defaults(func=orden_descargar)
@@ -712,7 +712,7 @@ def main(argv=None) -> None:
     p = sub.add_parser("configurar", help="Guarda tus preferencias (bank, casas, ligas, perfil...).")
     p.add_argument("--bank", type=float)
     p.add_argument("--casas", nargs="+", metavar="CASA", help=f"Tus casas: {' '.join(CASAS)}.")
-    p.add_argument("--ligas", nargs="+", choices=list(LIGAS) + ["todas"])
+    p.add_argument("--ligas", nargs="+", choices=list(LIGAS) + list(GRUPOS_LIGAS))
     p.add_argument("--perfil", choices=list(PERFILES))
     p.add_argument("--metodo", choices=["kelly", "plano"])
     p.add_argument("--kelly", type=float)
@@ -723,7 +723,7 @@ def main(argv=None) -> None:
     p.set_defaults(func=orden_configurar)
 
     p = sub.add_parser("actualizar", help="Cada jornada: baja datos nuevos y liquida los picks jugados.")
-    p.add_argument("--ligas", nargs="+", choices=list(LIGAS) + ["todas"])
+    p.add_argument("--ligas", nargs="+", choices=list(LIGAS) + list(GRUPOS_LIGAS))
     p.add_argument("--temporadas", type=int, default=4)
     p.set_defaults(func=orden_actualizar)
 

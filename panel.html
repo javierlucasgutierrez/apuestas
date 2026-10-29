@@ -75,6 +75,7 @@
   <h1>⚽ Panel de apuestas de valor</h1>
   <nav>
     <button data-p="inicio" class="activa">🏠 Inicio</button>
+    <button data-p="top10">⭐ Top 10</button>
     <button data-p="picks">🎯 Picks</button>
     <button data-p="goles">⚽ Goles (modelo)</button>
     <button data-p="corners">🚩 Córners (prueba)</button>
@@ -109,6 +110,18 @@
     <p class="ayuda">Pon tu bank actualizado en ⚙️ Configuración y pulsa aquí para que el modelo aprenda de los datos nuevos (tarda unos minutos).</p>
     <button class="boton secundario" id="btn-optimizar">🧠 Mejorar el modelo</button>
   </div>
+</section>
+
+<!-- TOP 10 -->
+<section id="top10">
+  <h2>⭐ Las 10 mejores oportunidades</h2>
+  <p class="ayuda">Solo «más de» goles y córners, en las ligas principales. Primero las que salen de comparar casas (las únicas con backtest de dinero) y después las del modelo, siempre la línea más alta posible. Como mucho una por partido. <b>Apuesta solo si encuentras la cuota mínima o más.</b></p>
+  <div class="fila" style="margin-bottom:14px">
+    <label style="margin:0">Próximos
+      <select id="top10-dias"><option value="2">2 días</option><option value="3">3 días</option><option value="4" selected>4 días</option><option value="7">7 días</option></select>
+    </label>
+  </div>
+  <div id="top10-lista"></div>
 </section>
 
 <!-- PICKS -->
@@ -207,8 +220,9 @@
 
     <label>Ligas</label>
     <select id="c-ligas">
-      <option value="todas">Las 20 ligas (más oportunidades)</option>
+      <option value="principales">Principales: 1ª y 2ª de Inglaterra, España, Alemania, Italia y Francia + Países Bajos y Escocia (recomendado)</option>
       <option value="grandes">Solo las 5 grandes</option>
+      <option value="todas">Las 20 ligas</option>
     </select>
 
     <label>Clave de The Odds API (opcional)<small>Para tener las cuotas del momento. Se consigue gratis en the-odds-api.com. Se guarda solo en tu ordenador.</small></label>
@@ -265,7 +279,7 @@ async function api(ruta, datos) {
 function ir(nombre) {
   document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("activa", b.dataset.p === nombre));
   document.querySelectorAll("section").forEach((s) => s.classList.toggle("activa", s.id === nombre));
-  ({inicio: cargarInicio, picks: cargarPicks, goles: () => cargarGoles(), corners: () => cargarCorners(), calculadora: cargarCalculadora, historial: cargarHistorial, config: cargarConfig})[nombre]?.();
+  ({inicio: cargarInicio, top10: cargarTop10, picks: cargarPicks, goles: () => cargarGoles(), corners: () => cargarCorners(), calculadora: cargarCalculadora, historial: cargarHistorial, config: cargarConfig})[nombre]?.();
   window.scrollTo(0, 0);
 }
 document.querySelectorAll("nav button").forEach((b) => b.onclick = () => ir(b.dataset.p));
@@ -356,6 +370,48 @@ $("#btn-publicar").onclick = async () => {
   $("#publicar-texto").value = r.texto;
   try { await navigator.clipboard.writeText(r.texto); } catch (e) { $("#publicar-texto").select(); }
 };
+
+// ---------- TOP 10
+async function cargarTop10() {
+  const caja = $("#top10-lista");
+  caja.innerHTML = '<div class="vacio">Buscando las mejores oportunidades...</div>';
+  const d = await api("/api/top10?dias=" + $("#top10-dias").value);
+  if (d.error) { caja.innerHTML = `<div class="vacio">${esc(d.error)}</div>`; return; }
+  if (!d.picks.length) { caja.innerHTML = '<div class="tarjeta vacio">No hay oportunidades buenas en esas fechas. Actualiza los datos o amplía los días. No apostar también es correcto.</div>'; return; }
+  caja.innerHTML = (d.picks.length < 10 ? `<div class="aviso">Hoy solo hay ${d.picks.length} que merezcan la pena: no se rellena con picks malos.</div>` : "") +
+    d.picks.map((p, i) => `
+    <div class="tarjeta pick">
+      <div class="fila" style="justify-content:space-between">
+        <div><div class="partido">${p.n}. ${esc(p.local)} – ${esc(p.visitante)}</div>
+             <div class="meta">${esc(p.dia)} · ${esc(p.nombre_liga)}</div></div>
+        <span class="etiqueta ${p.origen === "mercado" ? "e-verde" : "e-amarillo"}">${p.origen === "mercado" ? "✅ Comparando casas" : "🧪 Modelo"}</span>
+      </div>
+      <div class="apuesta">➡️ <b>${esc(p.descripcion)}</b> <span class="etiqueta e-azul">${String(p.prob).replace(".", ",")} %</span></div>
+      <div class="datos">
+        <div class="clave"><b>${coma(p.cuota_minima)}</b><span>Cuota mínima</span></div>
+        <div><b>${coma(p.cuota_justa)}</b><span>Cuota justa</span></div>
+        ${p.cuota ? `<div><b>${coma(p.cuota)}</b><span>Mejor cuota vista</span></div>` : ""}
+        ${p.valor ? `<div><b>+${String(p.valor).replace(".", ",")} %</b><span>Valor</span></div>` : ""}
+        <div><b>${coma(p.euros)} €</b><span>Apostar (si llega a la mínima)</span></div>
+      </div>
+      <div class="fila">
+        <span>Si la apuestas: cuota</span>
+        <input class="pequeno" id="t10-c-${i}" placeholder="${coma(p.cuota_minima)}" inputmode="decimal">
+        <input class="pequeno" id="t10-k-${i}" placeholder="Casa" style="width:120px">
+        <button class="boton" onclick="guardarTop10(${i})">✅ Guardar</button>
+      </div>
+    </div>`).join("");
+  window._top10 = d.picks;
+}
+$("#top10-dias").onchange = cargarTop10;
+async function guardarTop10(i) {
+  const p = window._top10[i];
+  const cuota = parseFloat(($("#t10-c-" + i).value || "").replace(",", "."));
+  if (!(cuota > 1)) { alert("Escribe la cuota que has conseguido, por ejemplo 1,85"); return; }
+  if (cuota < p.cuota_minima && !confirm(`Esa cuota está por debajo de la mínima (${coma(p.cuota_minima)}). ¿Guardarla igualmente?`)) return;
+  const r = await api("/api/guardar", {...p, cuota, casa: $("#t10-k-" + i).value || "manual"});
+  alert(r.mensaje);
+}
 
 // ---------- GOLES Y CÓRNERS (salen del modelo)
 const _modelo = {};
@@ -510,7 +566,7 @@ async function cargarConfig() {
   if (!$("#c-perfil").value) { $("#c-perfil").value = "goles"; $("#c-metodo").value = "plano"; }
   $("#c-metodo").value = c.metodo;
   $("#c-plano").value = Math.round(c.plano * 1000) / 10;
-  $("#c-ligas").value = (c.ligas || []).includes("todas") ? "todas" : "grandes";
+  $("#c-ligas").value = ["todas", "principales", "grandes"].find((g) => (c.ligas || []).includes(g)) || "principales";
   $("#c-clave").value = "";
   $("#c-clave-estado").textContent = c.clave_odds ? "✅ Tienes una clave guardada. Escribe otra solo si quieres cambiarla." : "Sin clave: se usan las cuotas de football-data.";
   $("#c-plano-caja").hidden = c.metodo !== "plano";
