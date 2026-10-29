@@ -1,0 +1,244 @@
+<title>Top 10 de Valor</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Source+Sans+3:wght@400;600;700&display=swap">
+<style>
+  /* Layout: una columna de tarjetas tipo boleto, cabecera tipo marcador; pensada para el pulgar. */
+  :root {
+    --fondo: #f3f5f2; --papel: #ffffff; --tinta: #17201b; --suave: #5d6b63; --linea: #dfe5e0;
+    --cesped: #1f7a4d; --cesped-suave: #e3f2ea; --marcador: #14231b; --marcador-tinta: #e9f5ee;
+    --oro: #a86b00; --oro-suave: #fff3d6; --rojo: #b3261e; --rojo-suave: #fbe7e5;
+    --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+    --texto: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --fondo: #0e1411; --papel: #17201b; --tinta: #e6eee9; --suave: #9db0a5; --linea: #2a3730;
+      --cesped: #5cc48d; --cesped-suave: #173526; --marcador: #08100c; --marcador-tinta: #d8efe2;
+      --oro: #f0b84a; --oro-suave: #382a0c; --rojo: #ff8a80; --rojo-suave: #3d1714; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --fondo: #0e1411; --papel: #17201b; --tinta: #e6eee9; --suave: #9db0a5; --linea: #2a3730;
+    --cesped: #5cc48d; --cesped-suave: #173526; --marcador: #08100c; --marcador-tinta: #d8efe2;
+    --oro: #f0b84a; --oro-suave: #382a0c; --rojo: #ff8a80; --rojo-suave: #3d1714; color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--fondo); color: var(--tinta); font: 16px/1.45 var(--texto); }
+  body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--marcador); }
+  header { background: var(--marcador); color: var(--marcador-tinta); position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+           padding-block: 14px 0; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .cab { max-width: 720px; margin: 0 auto; }
+  h1 { font: 700 26px/1 var(--display); letter-spacing: .02em; text-transform: uppercase; margin: 0; text-wrap: balance; }
+  .sub { font-size: 13px; opacity: .8; margin-top: 4px; }
+  nav { display: flex; gap: 2px; margin-top: 12px; }
+  nav button { flex: 1; background: none; border: 0; color: var(--marcador-tinta); opacity: .65; padding: 10px 4px 12px;
+               font: 600 15px var(--display); letter-spacing: .06em; text-transform: uppercase; border-bottom: 3px solid transparent; cursor: pointer; }
+  nav button[aria-selected="true"] { opacity: 1; border-bottom-color: var(--cesped); }
+  nav button:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--cesped); outline-offset: 2px; }
+  main { max-width: 720px; margin: 0 auto; padding-block: 16px 48px;
+         padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  section { display: grid; gap: 12px; }
+  .nota { color: var(--suave); font-size: 14px; margin: 0; }
+  .boleto { background: var(--papel); border: 1px solid var(--linea); border-radius: 10px; padding: 14px; display: grid; gap: 10px; min-width: 0; }
+  .boleto.hecha { border-color: var(--cesped); }
+  .fila { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .entre { justify-content: space-between; }
+  .num { font: 700 28px/1 var(--display); color: var(--cesped); min-width: 1.4em; }
+  .partido { font-weight: 700; font-size: 17px; line-height: 1.25; }
+  .meta { color: var(--suave); font-size: 13px; }
+  .apuesta { font: 600 22px/1.15 var(--display); letter-spacing: .01em; }
+  .chip { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 12px; font-weight: 700; letter-spacing: .03em; }
+  .c-mercado { background: var(--cesped-suave); color: var(--cesped); }
+  .c-modelo { background: var(--oro-suave); color: var(--oro); }
+  .c-rojo { background: var(--rojo-suave); color: var(--rojo); }
+  .cuotas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; font-variant-numeric: tabular-nums; }
+  .cuotas div { background: var(--fondo); border-radius: 8px; padding: 7px 8px; }
+  .cuotas b { display: block; font: 700 22px/1.1 var(--display); }
+  .cuotas span { font-size: 11px; color: var(--suave); text-transform: uppercase; letter-spacing: .05em; }
+  .cuotas .clave { background: var(--marcador); color: var(--marcador-tinta); }
+  .cuotas .clave span { color: var(--marcador-tinta); opacity: .75; }
+  input { font: inherit; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--linea); background: var(--papel); color: var(--tinta); width: 92px; }
+  input.casa { width: 120px; }
+  button.accion { background: var(--cesped); color: #fff; border: 0; border-radius: 8px; padding: 10px 14px; font: 600 16px var(--texto); cursor: pointer; }
+  button.quitar { background: none; border: 1px solid var(--linea); color: var(--suave); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+  .aviso { font-size: 13px; color: var(--rojo); }
+  .vacio { text-align: center; color: var(--suave); background: var(--papel); border: 1px dashed var(--linea); border-radius: 10px; padding: 28px 16px; }
+  .totales { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; font-variant-numeric: tabular-nums; }
+  .totales div { background: var(--papel); border: 1px solid var(--linea); border-radius: 10px; padding: 12px; }
+  .totales b { display: block; font: 700 30px/1 var(--display); }
+  .totales span { font-size: 12px; color: var(--suave); }
+  .bien { color: var(--cesped); } .mal { color: var(--rojo); }
+  .tabla { overflow-x: auto; background: var(--papel); border: 1px solid var(--linea); border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--linea); white-space: nowrap; }
+  th { font: 600 13px var(--display); letter-spacing: .06em; text-transform: uppercase; color: var(--suave); }
+  td.n, th.n { text-align: right; }
+  h2 { font: 700 18px var(--display); letter-spacing: .05em; text-transform: uppercase; margin: 8px 0 0; }
+  .ayuda p { margin: 0 0 10px; max-width: 65ch; }
+  @media (prefers-reduced-motion: no-preference) { .boleto { transition: border-color .2s; } }
+</style>
+
+<header>
+  <div class="cab">
+    <h1>Top 10 de Valor</h1>
+    <div class="sub" id="sub">Solo «más de» goles y córners · ligas principales de Europa</div>
+    <nav role="tablist">
+      <button role="tab" id="t-semana" aria-selected="true" data-v="semana">Esta semana</button>
+      <button role="tab" id="t-historial" aria-selected="false" data-v="historial">Historial</button>
+      <button role="tab" id="t-ayuda" aria-selected="false" data-v="ayuda">Cómo funciona</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section id="v-semana">
+    <p class="nota" id="semana-nota">Cargando los picks…</p>
+    <div id="lista"></div>
+  </section>
+
+  <section id="v-historial" hidden>
+    <div class="totales" id="totales"></div>
+    <h2>Por tipo</h2>
+    <div class="tabla" id="por-tipo"></div>
+    <h2>Lo que ha aprendido</h2>
+    <p class="nota" id="aprendido"></p>
+    <h2>Últimos picks</h2>
+    <div class="tabla" id="ultimos"></div>
+  </section>
+
+  <section id="v-ayuda" class="ayuda" hidden>
+    <div class="boleto">
+      <p><b>Qué es.</b> Cada semana, en la nube, el programa baja los datos de las ligas principales (1ª y 2ª de Inglaterra, España, Alemania, Italia y Francia, más Países Bajos y Escocia) y elige las 10 oportunidades de «más de» goles o córners con más valor y probabilidad. Como mucho una por partido.</p>
+      <p><b>Verde, «comparando casas».</b> Una casa paga más que el precio justo de Pinnacle o Betfair. Es lo único con backtest de dinero: «más de 2,5 goles» dio +10 % en 444 apuestas.</p>
+      <p><b>Ámbar, «modelo».</b> Sale de las estadísticas: sus probabilidades se cumplen, pero no hay cuotas antiguas para comprobar si dan dinero. Está en prueba.</p>
+      <p><b>Cuota mínima.</b> Lo mínimo que tiene que pagar tu casa para que valga la pena. Si paga menos, no se apuesta, aunque el partido «pinte bien».</p>
+      <p><b>Cómo aprende.</b> Cada pick se guarda con su resultado. Si un tipo de pick acierta menos de lo que predijo, se le bajan las probabilidades; si con suficientes picks acierta claramente menos, se deja de proponer.</p>
+      <p><b>Cuándo se actualiza.</b> Lunes (resultados y aprendizaje), miércoles y viernes (picks del fin de semana).</p>
+      <p class="nota">Apuesta solo lo que puedas permitirte perder. Habrá semanas en negativo. Ayuda: jugarbien.es · 900 200 225.</p>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const coma = (x, d = 2) => (x == null || x === "") ? "–" : Number(x).toLocaleString("es-ES", {minimumFractionDigits: d, maximumFractionDigits: d});
+const esc = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+// Los ids del almacén solo admiten letras, cifras y _ - . ~ : @ +
+const clave = (id) => String(id).normalize("NFKD").replace(/[^\w\-.~:@+]/g, "_").slice(0, 190);
+
+let semana = null, historial = [], marcas = {}, db = null;
+
+function vista(v) {
+  for (const b of document.querySelectorAll("nav button")) b.setAttribute("aria-selected", String(b.dataset.v === v));
+  for (const s of ["semana", "historial", "ayuda"]) $("#v-" + s).hidden = s !== v;
+  try { localStorage.setItem("vista", v); } catch (e) {}
+}
+for (const b of document.querySelectorAll("nav button")) b.onclick = () => vista(b.dataset.v);
+try { const v = localStorage.getItem("vista"); if (v) vista(v); } catch (e) {}
+
+function pintarSemana() {
+  const caja = $("#lista");
+  if (!semana || !(semana.picks || []).length) {
+    $("#semana-nota").textContent = "";
+    caja.innerHTML = `<div class="vacio">Aún no hay picks para este fin de semana.<br>Se publican solos los miércoles y viernes; vuelve entonces.</div>`;
+    return;
+  }
+  const picks = semana.picks;
+  $("#sub").textContent = `Actualizado ${semana.actualizado || ""} · ${picks.length} picks · solo «más de»`;
+  $("#semana-nota").textContent = picks.length < 10
+    ? `Esta semana solo hay ${picks.length} que merezcan la pena: no se rellena con picks malos.`
+    : "Apuesta solo si tu casa paga la cuota mínima o más.";
+  caja.innerHTML = picks.map((p, i) => {
+    const k = clave(p.id || `${p.fecha}_${p.local}_${p.visitante}_${p.mercado}`);
+    const m = marcas[k];
+    const origen = p.origen === "mercado" ? `<span class="chip c-mercado">Comparando casas</span>` : `<span class="chip c-modelo">Modelo · en prueba</span>`;
+    return `<article class="boleto ${m ? "hecha" : ""}">
+      <div class="fila entre">
+        <div class="fila" style="flex-wrap:nowrap;min-width:0"><span class="num">${p.n || i + 1}</span>
+          <div style="min-width:0"><div class="partido">${esc(p.local)} – ${esc(p.visitante)}</div>
+          <div class="meta">${esc(p.dia)} · ${esc(p.nombre_liga)}</div></div></div>
+        ${origen}
+      </div>
+      <div class="apuesta">${esc(p.descripcion)} <span class="meta">· ${coma(p.prob, 0)} %</span></div>
+      <div class="cuotas">
+        <div class="clave"><b>${coma(p.cuota_minima)}</b><span>Cuota mínima</span></div>
+        <div><b>${coma(p.cuota_justa)}</b><span>Cuota justa</span></div>
+        <div><b>${p.cuota ? coma(p.cuota) : "–"}</b><span>${p.valor ? "Mejor · +" + coma(p.valor, 1) + " %" : "Mejor vista"}</span></div>
+      </div>
+      ${m ? `<div class="fila entre"><span class="chip c-mercado">✓ Apostada a ${coma(m.cuota)}${m.casa ? " en " + esc(m.casa) : ""}</span>
+                <button class="quitar" data-quitar="${k}">Quitar</button></div>`
+          : `<form class="fila" data-pick="${i}">
+              <input id="c-${i}" inputmode="decimal" placeholder="${coma(p.cuota_minima)}" aria-label="Cuota conseguida">
+              <input id="k-${i}" class="casa" placeholder="Casa" aria-label="Casa de apuestas">
+              <button class="accion" type="submit">La he apostado</button>
+              <span class="aviso" id="a-${i}"></span></form>`}
+    </article>`;
+  }).join("");
+}
+
+function pintarHistorial() {
+  const r = (semana && semana.resumen) || {total: {picks: 0, acertados: 0, unidades: 0, yield: 0}, por_tipo: {}};
+  const t = r.total;
+  $("#totales").innerHTML = `
+    <div><b>${t.picks}</b><span>Picks liquidados</span></div>
+    <div><b>${t.picks ? Math.round(100 * t.acertados / t.picks) : 0} %</b><span>Acertados</span></div>
+    <div><b class="${t.unidades >= 0 ? "bien" : "mal"}">${t.unidades >= 0 ? "+" : ""}${coma(t.unidades)}</b><span>Unidades (1 por pick)</span></div>
+    <div><b class="${t.yield >= 0 ? "bien" : "mal"}">${t.yield >= 0 ? "+" : ""}${coma(t.yield, 1)} %</b><span>Rentabilidad</span></div>`;
+  const tipos = Object.entries(r.por_tipo || {});
+  $("#por-tipo").innerHTML = tipos.length ? `<table><tr><th>Tipo</th><th class="n">Picks</th><th class="n">Acierto</th><th class="n">Unidades</th></tr>${tipos.map(([k, v]) =>
+    `<tr><td>${esc(k)}</td><td class="n">${v.picks}</td><td class="n">${Math.round(100 * v.acertados / v.picks)} %</td><td class="n ${v.unidades >= 0 ? "bien" : "mal"}">${v.unidades >= 0 ? "+" : ""}${coma(v.unidades)}</td></tr>`).join("")}</table>`
+    : `<div class="vacio">Todavía no hay picks liquidados. Los resultados se ponen solos cada lunes.</div>`;
+  const ap = Object.entries((semana && semana.aprendizaje) || {});
+  $("#aprendido").textContent = ap.length
+    ? ap.map(([k, v]) => `${k}: acierta ${v.aciertos} de ${coma(v.esperados, 1)} esperados → ${v.excluir ? "se deja de proponer" : "probabilidades × " + coma(v.factor, 3)}`).join(" · ")
+    : "Aún no hay datos suficientes: empieza a aprender con los primeros resultados.";
+  const ult = [...historial].reverse().filter((p) => p.estado && p.estado !== "pendiente").slice(0, 40);
+  const color = {ganada: "bien", "medio ganada": "bien", perdida: "mal", "medio perdida": "mal"};
+  $("#ultimos").innerHTML = ult.length ? `<table><tr><th>Fecha</th><th>Partido</th><th>Apuesta</th><th>Resultado</th><th class="n">Ud.</th></tr>${ult.map((p) =>
+    `<tr><td>${esc(p.fecha.slice(8, 10) + "/" + p.fecha.slice(5, 7))}</td><td>${esc(p.local)} – ${esc(p.visitante)}</td><td>${esc(p.descripcion)}</td>
+     <td class="${color[p.estado] || ""}">${esc(p.estado)} · ${esc(p.resultado || "")}</td><td class="n">${p.beneficio >= 0 ? "+" : ""}${coma(p.beneficio)}</td></tr>`).join("")}</table>`
+    : `<div class="vacio">Aquí aparecerán los picks ya jugados, con su resultado.</div>`;
+}
+
+document.addEventListener("submit", async (e) => {
+  const form = e.target.closest("form[data-pick]");
+  if (!form) return;
+  e.preventDefault();
+  const i = Number(form.dataset.pick), p = semana.picks[i];
+  const cuota = parseFloat(($("#c-" + i).value || "").replace(",", "."));
+  const aviso = $("#a-" + i);
+  if (!(cuota > 1)) { aviso.textContent = "Escribe la cuota que has conseguido, por ejemplo 1,85."; return; }
+  if (cuota < p.cuota_minima && form.dataset.confirmar !== "1") {
+    aviso.textContent = `Está por debajo de la mínima (${coma(p.cuota_minima)}): ya no tiene valor. Pulsa otra vez para guardarla igualmente.`;
+    form.dataset.confirmar = "1";
+    return;
+  }
+  if (!db) { aviso.textContent = "No se puede guardar desde esta vista."; return; }
+  const k = clave(p.id || `${p.fecha}_${p.local}_${p.visitante}_${p.mercado}`);
+  try {
+    await db.collection("apuestas").doc(k).set({cuota, casa: $("#k-" + i).value.trim(), pick: p.id || k,
+      partido: `${p.local} – ${p.visitante}`, mercado: p.mercado, fecha: p.fecha, guardado: new Date().toISOString()});
+  } catch (err) { aviso.textContent = "No se ha podido guardar. Inténtalo de nuevo en un momento."; }
+});
+document.addEventListener("click", async (e) => {
+  const k = e.target.dataset && e.target.dataset.quitar;
+  if (!k || !db) return;
+  try { await db.collection("apuestas").doc(k).delete(); } catch (err) {}
+});
+
+pintarSemana();
+pintarHistorial();
+
+(async () => {
+  db = window.claude ? await window.claude.use("db") : null;
+  if (!db) {
+    $("#semana-nota").textContent = "Abre esta página desde tu cuenta de Claude para ver los picks.";
+    return;
+  }
+  db.doc("semana/actual").onSnapshot((s) => { semana = s.exists ? s.data() : null; pintarSemana(); pintarHistorial(); },
+    () => { $("#semana-nota").textContent = "No se pueden cargar los picks ahora mismo. Vuelve a abrir la página en un rato."; });
+  db.doc("historial/todo").onSnapshot((s) => { historial = (s.exists && s.data().picks) || []; pintarHistorial(); }, () => {});
+  db.collection("apuestas").onSnapshot((q) => { marcas = {}; for (const d of q.docs) marcas[d.id] = d.data(); pintarSemana(); }, () => {});
+})();
+</script>
