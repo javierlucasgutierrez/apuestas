@@ -17,14 +17,15 @@ Uso:  python semana.py --desde 2026-10-31 --dias 2 [--guardar] [--json top10.jso
 
 import argparse
 import json
+import os
 import sys
-from datetime import date
+from datetime import date, timedelta
 
 import app as cli
 import panel
 from predictor.descargar import LIGAS, expandir_ligas
-from predictor.registro import Registro, descripcion
-from predictor.valor import Oportunidad
+from predictor.registro import estado_de
+from predictor.valor import _fecha, leer_filas, liquidar
 
 N_PICKS = 10
 # Topes por tipo para repartir el riesgo; el resto, goles del partido.
@@ -43,28 +44,77 @@ def tipo_de(mercado: str) -> str:
     return "Goles"
 
 
+HISTORIAL = os.path.join(cli.CARPETA, "datos", "historial_top10.json")
+
+
+def leer_historial() -> list[dict]:
+    if not os.path.exists(HISTORIAL):
+        return []
+    with open(HISTORIAL, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def escribir_historial(picks: list[dict]) -> None:
+    with open(HISTORIAL, "w", encoding="utf-8") as f:
+        json.dump(picks, f, ensure_ascii=False, indent=1)
+
+
+def id_pick(p: dict) -> str:
+    return f"{p['fecha']}_{p['local']}_{p['visitante']}_{p['mercado']}".replace(" ", "_").replace("/", "-")
+
+
 def aprendizaje() -> dict[str, dict]:
     """Lo aprendido del propio historial del Top 10, por tipo de pick.
 
     factor: cuánto corregir las probabilidades del modelo (aciertos reales / aciertos esperados),
     suavizado con 15 «aciertos de prueba» para no reaccionar a rachas cortas.
     """
-    registro = Registro(cli.BASE_DATOS)
-    picks = [p for p in registro.picks("perfil = ? AND estado != 'pendiente'", (PERFIL,))]
-    registro.cerrar()
     resumen = {}
-    for p in picks:
-        if not p.cuota_justa or p.beneficio is None:
+    for p in leer_historial():
+        if p.get("beneficio") is None:
             continue
-        r = resumen.setdefault(tipo_de(p.mercado), {"n": 0, "aciertos": 0.0, "esperados": 0.0, "unidades": 0.0})
+        r = resumen.setdefault(tipo_de(p["mercado"]), {"n": 0, "aciertos": 0.0, "esperados": 0.0, "unidades": 0.0})
         r["n"] += 1
-        r["aciertos"] += 1 if p.beneficio > 0 else (0.5 if p.beneficio == 0 else 0)
-        r["esperados"] += 1 / p.cuota_justa
-        r["unidades"] += p.beneficio
+        r["aciertos"] += 1 if p["beneficio"] > 0 else (0.5 if p["beneficio"] == 0 else 0)
+        r["esperados"] += p["prob"] / 100
+        r["unidades"] += p["beneficio"]
     for r in resumen.values():
-        r["factor"] = min(max((r["aciertos"] + 15) / (r["esperados"] + 15), 0.8), 1.1)
+        r["factor"] = round(min(max((r["aciertos"] + 15) / (r["esperados"] + 15), 0.8), 1.1), 3)
         r["excluir"] = r["n"] >= 60 and r["aciertos"] < 0.85 * r["esperados"]
     return resumen
+
+
+def liquidar_historial() -> list[dict]:
+    """Pone el resultado a los picks del historial ya jugados. Devuelve los liquidados ahora.
+
+    Los del modelo se liquidan a su cuota mínima (lo mínimo que había que conseguir para apostarlos).
+    """
+    indice = {}
+    for f in leer_filas([cli.DESCARGAS]):
+        if f.get("FTHG") and f.get("HomeTeam"):
+            try:
+                indice[(_fecha(f["Date"]).isoformat(), f["HomeTeam"], f["AwayTeam"])] = f
+            except ValueError:
+                pass
+    picks, hechos = leer_historial(), []
+    for p in picks:
+        if p.get("beneficio") is not None:
+            continue
+        fila = indice.get((p["fecha"], p["local"], p["visitante"]))
+        if not fila:
+            continue
+        beneficio, clv = liquidar(fila, p["mercado"], p["cuota"] or p["cuota_minima"])
+        if beneficio is None:
+            continue
+        p["beneficio"] = round(beneficio, 3)
+        p["estado"] = estado_de(beneficio, p["cuota"] or p["cuota_minima"])
+        p["clv"] = None if clv is None else round(clv, 4)
+        p["resultado"] = f"{fila['FTHG']}-{fila['FTAG']}" + (
+            f" · córners {int(float(fila['HC'])) + int(float(fila['AC']))}" if fila.get("HC") and fila.get("AC") else "") + (
+            f" · descanso {fila['HTHG']}-{fila['HTAG']}" if fila.get("HTHG") else "")
+        hechos.append(p)
+    escribir_historial(picks)
+    return hechos
 
 
 def top10(desde: date, dias: int, n: int = N_PICKS) -> dict:
@@ -132,37 +182,71 @@ def top10(desde: date, dias: int, n: int = N_PICKS) -> dict:
 
 
 def guardar(resultado: dict) -> int:
-    """Guarda el Top 10 en el registro (para liquidarlo y aprender). Devuelve cuántos son nuevos."""
-    prefs = panel.preferencias()
-    registro = Registro(cli.BASE_DATOS)
+    """Añade el Top 10 al historial (para liquidarlo y aprender). Devuelve cuántos son nuevos."""
+    picks = leer_historial()
+    vistos = {p["id"] for p in picks}
     nuevos = 0
     for p in resultado["picks"]:
-        o = Oportunidad(date.fromisoformat(p["fecha"]), p["liga"], p["local"], p["visitante"], p["mercado"],
-                        "Max" if p["origen"] == "mercado" else "modelo", p["cuota"] or p["cuota_minima"],
-                        1 / p["cuota_justa"], p["origen"], familia=p["familia"])
-        nuevos += registro.guardar(o, p["stake_pct"], PERFIL, prefs.get("tope", 0.03))
-    registro.cerrar()
+        pid = id_pick(p)
+        if pid in vistos:
+            continue
+        picks.append({**p, "id": pid, "generado": date.today().isoformat(), "estado": "pendiente",
+                      "beneficio": None, "clv": None, "resultado": None})
+        vistos.add(pid)
+        nuevos += 1
+    escribir_historial(picks)
     return nuevos
+
+
+def resumen_historial() -> dict:
+    """Totales del Top 10 ya liquidado, en unidades (1 unidad por pick)."""
+    jugados = [p for p in leer_historial() if p.get("beneficio") is not None]
+    total = {"picks": len(jugados), "acertados": sum(p["beneficio"] > 0 for p in jugados),
+             "unidades": round(sum(p["beneficio"] for p in jugados), 2)}
+    total["yield"] = round(100 * total["unidades"] / total["picks"], 1) if jugados else 0.0
+    por_tipo = {}
+    for p in jugados:
+        t = por_tipo.setdefault(tipo_de(p["mercado"]), {"picks": 0, "acertados": 0, "unidades": 0.0})
+        t["picks"] += 1
+        t["acertados"] += p["beneficio"] > 0
+        t["unidades"] = round(t["unidades"] + p["beneficio"], 2)
+    return {"total": total, "por_tipo": por_tipo}
+
+
+def proximo_fin_de_semana(hoy: date) -> tuple[date, int]:
+    """Del viernes al lunes siguientes (o el que está en curso si hoy es viernes a lunes)."""
+    if hoy.weekday() in (4, 5, 6, 0):
+        return hoy, (0 - hoy.weekday()) % 7 + 1
+    viernes = hoy + timedelta(days=(4 - hoy.weekday()) % 7)
+    return viernes, 4
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Top 10 de la semana (solo «más de» goles y córners).")
-    parser.add_argument("--desde", help="Primer día AAAA-MM-DD (por defecto hoy).")
-    parser.add_argument("--dias", type=int, default=3)
-    parser.add_argument("--guardar", action="store_true", help="Guardar en el registro para aprender.")
-    parser.add_argument("--json", help="Guardar el resultado en este archivo JSON.")
+    parser.add_argument("--desde", help="Primer día AAAA-MM-DD (por defecto, el próximo fin de semana).")
+    parser.add_argument("--dias", type=int, help="Cuántos días (por defecto, de viernes a lunes).")
+    parser.add_argument("--guardar", action="store_true", help="Añadirlo al historial para aprender.")
+    parser.add_argument("--liquidar", action="store_true", help="Poner resultado a los picks ya jugados.")
+    parser.add_argument("--json", help="Guardar el Top 10, el resumen y lo aprendido en este JSON.")
     args = parser.parse_args()
-    desde = date.fromisoformat(args.desde) if args.desde else date.today()
-    resultado = top10(desde, args.dias)
+    if args.liquidar:
+        for p in liquidar_historial():
+            print(f"  {p['estado'].upper():<14}{p['local']} - {p['visitante']}: {p['descripcion']} ({p['resultado']})")
+    desde, dias = proximo_fin_de_semana(date.today())
+    desde = date.fromisoformat(args.desde) if args.desde else desde
+    dias = args.dias or dias
+    resultado = top10(desde, dias)
     for p in resultado["picks"]:
         extra = f"valor +{p['valor']} % a {p['cuota']}" if p["origen"] == "mercado" else "modelo"
         print(f"{p['n']:>2}. {p['dia']}  {p['local']} - {p['visitante']} ({p['nombre_liga']}): "
               f"{p['descripcion']} · {p['prob']} % · cuota mínima {p['cuota_minima']} · {extra}")
     print(f"({resultado['candidatos']} candidatos; aprendizaje: "
-          f"{ {k: round(v['factor'], 3) for k, v in resultado['aprendizaje'].items()} })")
+          f"{ {k: v['factor'] for k, v in resultado['aprendizaje'].items()} })")
     if args.guardar:
-        print(f"Guardados en el registro: {guardar(resultado)} nuevos")
+        print(f"Añadidos al historial: {guardar(resultado)} nuevos")
     if args.json:
+        resultado["resumen"] = resumen_historial()
+        resultado["historial"] = leer_historial()[-200:]
         with open(args.json, "w", encoding="utf-8") as f:
             json.dump(resultado, f, ensure_ascii=False, indent=1)
 
