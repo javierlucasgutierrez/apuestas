@@ -197,7 +197,7 @@ function pintarHistorial() {
   const color = {ganada: "bien", "medio ganada": "bien", perdida: "mal", "medio perdida": "mal"};
   $("#ultimos").innerHTML = ult.length ? `<table><tr><th>Fecha</th><th>Partido</th><th>Apuesta</th><th>Resultado</th><th class="n">Ud.</th></tr>${ult.map((p) =>
     `<tr><td>${esc(p.fecha.slice(8, 10) + "/" + p.fecha.slice(5, 7))}</td><td>${esc(p.local)} – ${esc(p.visitante)}</td><td>${esc(p.descripcion)}</td>
-     <td class="${color[p.estado] || ""}">${esc(p.estado)} · ${esc(p.resultado || "")}</td><td class="n">${p.beneficio >= 0 ? "+" : ""}${coma(p.beneficio)}</td></tr>`).join("")}</table>`
+     <td class="${color[p.estado] || ""}">${esc(p.estado)} · ${esc(p.resultado || "")}</td><td class="n">${p.beneficio == null ? "" : (p.beneficio >= 0 ? "+" : "") + coma(p.beneficio)}</td></tr>`).join("")}</table>`
     : `<div class="vacio">Aquí aparecerán los picks ya jugados, con su resultado.</div>`;
 }
 

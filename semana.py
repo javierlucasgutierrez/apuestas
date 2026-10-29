@@ -101,7 +101,7 @@ def liquidar_historial() -> list[dict]:
                 pass
     picks, hechos = leer_historial(), []
     for p in picks:
-        if p.get("beneficio") is not None:
+        if p.get("beneficio") is not None or p.get("estado") == "anulado":
             continue
         fila = indice.get((p["fecha"], p["local"], p["visitante"]))
         if not fila:
@@ -145,7 +145,9 @@ def top10(desde: date, dias: int, n: int = N_PICKS, ya: list[dict] | None = None
     # 2) Modelo: goles (partido y 1ª parte) y córners, la línea más alta posible.
     for tipo in ("goles", "corners"):
         for c in panel.datos_modelo(dias, tipo, desde)["selecciones"]:
-            if c["liga"] not in ligas or c["alcanzable"] in ("no", "dudoso"):
+            # Solo si hay cuotas reales y alguna casa ya paga la mínima: sin cuotas el modelo
+            # pide más de lo que las casas suelen pagar (pasó con los primeros picks del calendario).
+            if c["liga"] not in ligas or c["alcanzable"] != "si":
                 continue
             a = aprendido.get(tipo_de(c["mercado"]), {})
             if a.get("excluir"):
