@@ -36,6 +36,15 @@ PASADO = os.path.join(cli.CARPETA, "datos", "estrategias_pasado.json")
 # Los pronósticos «oficiales» (los que se apuestan y se venderían): una vez publicados no se tocan.
 PRONOSTICOS = os.path.join(cli.CARPETA, "datos", "pronosticos.json")
 MAXIMO_POR_DIA = 3  # por regla, los mejores de cada día
+# Casas con licencia en España que vienen en los datos (football-data: B365; The Odds API: el resto).
+# Solo con ellas se publica un pronóstico oficial: si ninguna llega a la mínima, no se publica.
+CASAS_ESPANA = {"B365": "Bet365", "William Hill": "William Hill", "Marathon Bet": "Marathonbet",
+                "Unibet (NL)": "Unibet", "Unibet (SE)": "Unibet", "LeoVegas (SE)": "LeoVegas", "Codere (IT)": "Codere"}
+# Seguridad: stake máximo 3/10 (0,9 % del bank), como mucho 3 pronósticos por día y pausa si en los
+# últimos 30 días se pierden más de 15 unidades (vuelve sola cuando la ventana mejora).
+STAKE_MAXIMO = 3
+PRONOSTICOS_POR_DIA = 3
+STOP_LOSS_30_DIAS = -15.0
 DIAS_VISTA = 3
 LINEAS_FRECUENCIA = {"Goles +1.5": ("g", 1.5), "Goles +2.5": ("g", 2.5), "Goles +3.5": ("g", 3.5),
                      "Córners +8.5": ("c", 8.5), "Córners +9.5": ("c", 9.5), "Córners +10.5": ("c", 10.5)}
@@ -136,6 +145,10 @@ def candidatos(desde: date, dias: int) -> list[dict]:
                 c["pm"] = round(justo[0][0], 4) if justo else None
                 c["cuota"] = _cuota(fila, "Max>2.5")
                 c["b365"] = _cuota(fila, "B365>2.5")
+                espanolas = [(_cuota(fila, f"{k}>2.5"), nombre) for k, nombre in CASAS_ESPANA.items()]
+                espanolas = [x for x in espanolas if x[0]]
+                if espanolas:
+                    c["cuota_es"], c["casa_es"] = max(espanolas)
             salida.append(c)
     return salida
 
@@ -198,11 +211,19 @@ def liquidar_vivo() -> int:
 def publicar(elegidos: list[dict], recomendadas: set[str]) -> int:
     """Convierte en pronóstico oficial lo que eligen las reglas ★ (uno por partido).
 
-    Cuota publicada: la de Bet365 si llega a la mínima; si no, la mínima (lo que hay que conseguir).
-    Así el historial se calcula con cuotas que de verdad se pueden coger, no con la mejor del mercado.
-    Stake 1-10: un cuarto de Kelly con la probabilidad justa, con tope del 3 % del bank (= 10).
+    Solo se publica si una casa que opera en España paga la mínima: la cuota y la casa publicadas son
+    esas, así el historial se calcula con cuotas que de verdad se pueden coger.
+    Stake 1-10: un cuarto de Kelly con la probabilidad justa (10 = 3 % del bank), con tope STAKE_MAXIMO.
     """
     pron = leer(PRONOSTICOS, [])
+    hace_30 = (date.today() - timedelta(days=30)).isoformat()
+    ultimos = sum(p["unidades"] for p in pron if p["unidades"] is not None and p["fecha"] >= hace_30)
+    if ultimos <= STOP_LOSS_30_DIAS:
+        print(f"Pausa de seguridad: {ultimos:+.1f} unidades en 30 días. No se publica nada hasta que mejore.")
+        return 0
+    por_dia = defaultdict(int)
+    for p in pron:
+        por_dia[p["fecha"]] += 1
     vistos = {(p["fecha"], p["local"]) for p in pron}
     nuevos = 0
     orden = {r["id"]: i for i, r in enumerate(REGLAS)}
@@ -211,14 +232,17 @@ def publicar(elegidos: list[dict], recomendadas: set[str]) -> int:
             continue
         # Mínima = la que pide la regla (valor ≥1 % sobre el precio justo), redondeada hacia arriba.
         minima = math.ceil(max(1.50, 1.01 / e["pm"]) * 100) / 100
-        cuota, casa = (e["b365"], "Bet365") if e.get("b365") and e["b365"] >= minima else (minima, "mínima")
+        if not e.get("cuota_es") or e["cuota_es"] < minima or por_dia[e["fecha"]] >= PRONOSTICOS_POR_DIA:
+            continue
+        cuota, casa = e["cuota_es"], e["casa_es"]
         kelly = (e["pm"] * cuota - 1) / (cuota - 1)
         pron.append({"id": f"{e['fecha']}_{e['local']}_{e['mercado']}", "publicado": datetime.now().isoformat(timespec="minutes"),
                      "fecha": e["fecha"], "liga": e["liga"], "local": e["local"], "visitante": e["visitante"],
                      "mercado": e["mercado"], "cuota": cuota, "casa": casa, "cuota_minima": minima,
-                     "prob": round(e["pm"], 4), "stake": stake_10(min(0.25 * kelly, 0.03)), "regla": e["regla"],
+                     "prob": round(e["pm"], 4), "stake": min(STAKE_MAXIMO, stake_10(min(0.25 * kelly, 0.03))), "regla": e["regla"],
                      "estado": "pendiente", "resultado": None, "unidades": None})
         vistos.add((e["fecha"], e["local"]))
+        por_dia[e["fecha"]] += 1
         nuevos += 1
     escribir(PRONOSTICOS, pron)
     return nuevos

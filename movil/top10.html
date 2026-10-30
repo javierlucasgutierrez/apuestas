@@ -470,7 +470,7 @@ $("#estad").addEventListener("click", (e) => {
 // ---- El sistema elige ----
 let sistema = null;
 function textoPron(p) {
-  return `⚽ ${p.local} – ${p.visitante}\n🏆 ${p.nombre_liga} · ${p.dia}\n✅ ${textoMercado(p.mercado)} @${coma(p.cuota)}${p.casa === "Bet365" ? " (Bet365)" : ""}\n📊 Stake ${p.stake}/10 · cuota mínima ${coma(p.cuota_minima)}`;
+  return `⚽ ${p.local} – ${p.visitante}\n🏆 ${p.nombre_liga} · ${p.dia}\n✅ ${textoMercado(p.mercado)} @${coma(p.cuota)}${p.casa !== "mínima" ? " (" + p.casa + ")" : ""}\n📊 Stake ${p.stake}/10 · cuota mínima ${coma(p.cuota_minima)}`;
 }
 async function copiar(texto, boton) {
   try { await navigator.clipboard.writeText(texto); boton.textContent = "Copiado ✓"; }
@@ -490,7 +490,7 @@ function pintarPronosticos() {
         <div class="meta">${esc(p.dia)} · ${esc(p.nombre_liga)}</div></div><span class="chip c-mercado">Stake ${p.stake}/10</span></div>
       <div class="apuesta">${esc(textoMercado(p.mercado))}</div>
       <div class="cuotas">
-        <div class="clave"><b>${coma(p.cuota)}</b><span>${p.casa === "Bet365" ? "Bet365" : "Cuota a conseguir"}</span></div>
+        <div class="clave"><b>${coma(p.cuota)}</b><span>${p.casa === "mínima" ? "Cuota a conseguir" : esc(p.casa)}</span></div>
         <div><b>${coma(p.cuota_minima)}</b><span>Mínima</span></div>
         <div><b>${coma(100 * p.prob, 0)} %</b><span>Probabilidad</span></div>
       </div>
@@ -510,7 +510,7 @@ function pintarPronosticos() {
   const color = {ganada: "bien", "medio ganada": "bien", perdida: "mal", "medio perdida": "mal"};
   $("#pron-hist").innerHTML = (pr.ultimos || []).length ? `<table><tr><th>Fecha</th><th>Partido</th><th class="n">Cuota</th><th class="n">Stake</th><th>Resultado</th><th class="n">Unid.</th></tr>${pr.ultimos.map((p) =>
     `<tr><td>${esc(p.fecha.slice(8, 10) + "/" + p.fecha.slice(5, 7))}</td><td>${esc(p.local)} – ${esc(p.visitante)}<div class="meta">${esc(textoMercado(p.mercado))}</div></td><td class="n">${coma(p.cuota)}</td><td class="n">${p.stake}</td>
-     <td class="${color[p.estado] || ""}">${esc(p.estado)} · ${esc(p.resultado || "")}</td><td class="n">${p.unidades >= 0 ? "+" : ""}${coma(p.unidades)}</td></tr>`).join("")}</table>` : `<div class="vacio">Aquí saldrán todos los pronósticos jugados, uno a uno.</div>`;
+     <td class="${color[p.estado] || ""}">${esc(p.estado)} · ${esc(p.resultado || "")}</td><td class="n">${p.unidades == null ? "" : (p.unidades >= 0 ? "+" : "") + coma(p.unidades)}</td></tr>`).join("")}</table>` : `<div class="vacio">Aquí saldrán todos los pronósticos jugados, uno a uno.</div>`;
 }
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-copiar]");

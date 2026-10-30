@@ -8,7 +8,7 @@
   "visitante": "Ipswich",
   "mercado": "Goles +2.5",
   "cuota": 1.97,
-  "casa": "mínima",
+  "casa": "Unibet / LeoVegas",
   "cuota_minima": 1.97,
   "prob": 0.5133,
   "stake": 1,
@@ -16,5 +16,23 @@
   "estado": "pendiente",
   "resultado": null,
   "unidades": null
+ },
+ {
+  "casa": "mínima",
+  "cuota": 1.91,
+  "cuota_minima": 1.91,
+  "estado": "anulado",
+  "fecha": "2026-11-01",
+  "id": "2026-11-01_Lazio_Goles +2.5",
+  "liga": "I1",
+  "local": "Lazio",
+  "mercado": "Goles +2.5",
+  "prob": 0.529,
+  "publicado": "2026-10-30T07:51",
+  "regla": "valor1",
+  "resultado": "retirado antes del partido: ninguna casa de España pagaba la mínima",
+  "stake": 1,
+  "unidades": null,
+  "visitante": "Cagliari"
  }
 ]
