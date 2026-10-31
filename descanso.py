@@ -40,18 +40,41 @@ FACTOR_DESCANSO = {0: 0.95, 1: 1.02}
 # Con 1 gol importa quién gana: si gana el visitante, el local aprieta y llegan más goles (estable en ambos periodos).
 FACTOR_MARCADOR = {(0, 0): 0.95, (1, 0): 1.01, (0, 1): 1.05}
 # Marcadores que mejor rindieron en el backtest (línea +1,5): se destacan en el aviso.
-# CONDICIÓN ÓPTIMA (backtest a la cuota habitual de la casa, 4.050 partidos, +6,8 %: +6,5 / +7,4 en cada
-# periodo; +9,3 % si además era de pocos goles): al descanso 1-0 o 0-1 y va perdiendo el favorito o el
-# partido estaba igualado (el que pierde tenía al menos la probabilidad de ganar del otro menos 10 puntos).
-# Entonces «2 goles más» se apuesta en cuanto la casa paga la cuota justa. Si pierde el más débil: −2 %.
-MARGEN_IGUALADO = 0.10
+# CONDICIÓN ÓPTIMA, solo con estadísticas (backtest a la cuota habitual de la casa: 3.228 partidos, +7,3 %;
+# +7,4 / +7,0 en cada periodo): al descanso 1-0 o 0-1 y el equipo que va perdiendo es buen atacante en sus
+# últimos 10 partidos: 1,4 goles o más por partido, o 4,5 tiros a puerta o más. Entonces «2 goles más»
+# vale desde la cuota justa. Si el que pierde ataca poco: −2 %. Con 0-0 no compensa.
+GOLES_ATACANTE = 1.4
+TIROS_ATACANTE = 4.5
 
 
-def condicion_optima(local: int, visitante: int, p_local: float | None, p_visitante: float | None) -> bool:
-    if (local, visitante) not in ((1, 0), (0, 1)) or p_local is None or p_visitante is None:
-        return False
-    pierde, gana = (p_local, p_visitante) if (local, visitante) == (0, 1) else (p_visitante, p_local)
-    return pierde >= gana - MARGEN_IGUALADO
+def buen_atacante(gf: float | None, tiros: float | None) -> bool:
+    return (gf is not None and gf >= GOLES_ATACANTE) or (tiros is not None and tiros >= TIROS_ATACANTE)
+
+
+def condicion_optima(local: int, visitante: int, plan: dict) -> bool:
+    if (local, visitante) == (0, 1):
+        return buen_atacante(plan.get("local_gf"), plan.get("local_tiros"))
+    if (local, visitante) == (1, 0):
+        return buen_atacante(plan.get("visit_gf"), plan.get("visit_tiros"))
+    return False
+
+
+def ataque_reciente() -> dict:
+    """Últimos 10 partidos de cada equipo (con los nombres de football-data): goles y tiros a puerta a favor."""
+    hist = defaultdict(list)
+    filas = [f for f in leer_filas([cli.DESCARGAS]) if f.get("FTHG") and f.get("HomeTeam")]
+    for f in sorted(filas, key=lambda f: _fecha(f["Date"])):
+        for equipo, goles, tiros in ((f["HomeTeam"], f["FTHG"], f.get("HST")), (f["AwayTeam"], f["FTAG"], f.get("AST"))):
+            hist[(f["Div"], equipo)].append((int(goles), float(tiros) if tiros not in (None, "") else None))
+    salida = {}
+    for clave, lista in hist.items():
+        ultimos = lista[-10:]
+        tiros = [t for _, t in ultimos if t is not None]
+        if len(ultimos) >= 6:
+            salida[clave] = (round(sum(g for g, _ in ultimos) / len(ultimos), 2),
+                             round(sum(tiros) / len(tiros), 2) if tiros else None)
+    return salida
 
 
 def factor(local: int, visitante: int) -> float:
@@ -122,6 +145,7 @@ def preseleccionar(dia: date | None = None) -> dict:
     madrid = ZoneInfo("Europe/Madrid")
     prioridad = prioridad_ligas()
     modelo = None
+    ataque = ataque_reciente()
     vistos, candidatos = set(), []
     for archivo in ("proximos_vivo.csv", "calendario.csv"):
         for f in leer_filas([os.path.join(cli.DESCARGAS, archivo)]):
@@ -134,6 +158,7 @@ def preseleccionar(dia: date | None = None) -> dict:
             if not local or not visitante:
                 continue
             pred = modelo.predecir(local, visitante, fecha=dia)
+            atq_l, atq_v = ataque.get((liga, local), (None, None)), ataque.get((liga, visitante), (None, None))
             justo = precio_justo(f, "Goles 2.5")
             if justo:
                 p = justo[0][0]
@@ -152,11 +177,11 @@ def preseleccionar(dia: date | None = None) -> dict:
                                "inicio_utc": inicio.strftime("%Y-%m-%dT%H:%M"), "p_previa": round(p, 4),
                                "goles_esperados": round(lam, 2), "origen": "mercado" if justo else "modelo",
                                "prioridad": round(prioridad.get(liga, 5.0), 1),
-                               "p_local": round(pred.probs["1"], 3), "p_visitante": round(pred.probs["2"], 3)})
-    # Se eligen los partidos donde es más probable la condición óptima: igualados (cualquier 1-0 o 0-1 la
-    # cumple) y de pocos goles (rinden más); la liga solo desempata.
+                               "local_gf": atq_l[0], "local_tiros": atq_l[1], "visit_gf": atq_v[0], "visit_tiros": atq_v[1]})
+    # Se eligen los partidos donde más probable es la condición óptima: si los dos equipos son buenos
+    # atacantes, cualquier 1-0 o 0-1 la cumple; con uno solo, la mitad. La liga solo desempata.
     def puntos(c):
-        return (10 * (abs(c["p_local"] - c["p_visitante"]) <= MARGEN_IGUALADO) + 5 * (c["p_previa"] < 0.5)
+        return (8 * buen_atacante(c["local_gf"], c["local_tiros"]) + 8 * buen_atacante(c["visit_gf"], c["visit_tiros"])
                 + c["prioridad"] / 3)
     elegidos = sorted(candidatos, key=lambda c: (-puntos(c), c["inicio_utc"]))[:MAXIMO_POR_DIA]
     # Una revisión por liga y hora de inicio: así una sola consulta sirve para varios partidos.
@@ -254,7 +279,7 @@ def avisar(liga: str, inicio_utc: str) -> list[str]:
                     if o["name"] == "Over" and linea_o % 1 == 0.5 and float(o["price"]) > pagan.get(linea_o, (0,))[0]:
                         pagan[linea_o] = (float(o["price"]), nombre)
         partes = []
-        optima = condicion_optima(gl, gv, p.get("p_local"), p.get("p_visitante"))
+        optima = condicion_optima(gl, gv, p)
         for extra in (1, 2, 3):
             linea = gl + gv + extra - 0.5
             prob = prob_al_menos(extra, lam2)
@@ -274,7 +299,7 @@ def avisar(liga: str, inicio_utc: str) -> list[str]:
                              "aviso": linea in pagan and pagan[linea][0] >= minima, "optima": optima and extra == 2,
                              "resultado": None, "unidades": None})
         textos.append(f"AVISO ⏸️ {mc['home_team']} {gl}-{gv} {mc['away_team']} (descanso)"
-                      + (f" ⭐ CONDICIÓN ÓPTIMA: pierde el favorito o el partido estaba igualado → más de {str(gl + gv + 1.5).replace('.', ',')} "
+                      + (f" ⭐ CONDICIÓN ÓPTIMA: el que pierde es buen atacante (goles o tiros a puerta) → más de {str(gl + gv + 1.5).replace('.', ',')} "
                          f"si tu casa paga la mínima" if optima else "") + ": " + " · ".join(partes))
     escribir(REGISTRO, registro)
     print(f"Créditos restantes: {restantes}")
