@@ -274,7 +274,7 @@ def avisar(liga: str, inicio_utc: str) -> list[str]:
                              "aviso": linea in pagan and pagan[linea][0] >= minima, "optima": optima and extra == 2,
                              "resultado": None, "unidades": None})
         textos.append(f"AVISO ⏸️ {mc['home_team']} {gl}-{gv} {mc['away_team']} (descanso)"
-                      + (f" ⭐ CONDICIÓN ÓPTIMA: pierde el favorito o el partido estaba igualado → más de {gl + gv + 1.5:.1f} "
+                      + (f" ⭐ CONDICIÓN ÓPTIMA: pierde el favorito o el partido estaba igualado → más de {str(gl + gv + 1.5).replace('.', ',')} "
                          f"si tu casa paga la mínima" if optima else "") + ": " + " · ".join(partes))
     escribir(REGISTRO, registro)
     print(f"Créditos restantes: {restantes}")
