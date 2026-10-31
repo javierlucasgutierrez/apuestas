@@ -32,7 +32,7 @@ from predictor.valor import _fecha, leer_filas, precio_justo
 REGISTRO = os.path.join(cli.CARPETA, "datos", "descanso.json")
 HOY = os.path.join(cli.CARPETA, "datos", "descanso_hoy.json")
 PROB_MINIMA_PREVIA = 0.40   # «más de 2,5» antes del partido (los de pocos goles rinden igual o mejor)
-MAXIMO_POR_DIA = 5         # 1 crédito por revisión (y menos si coinciden liga y hora)
+MAXIMO_POR_DIA = 4         # 2 créditos por revisión (marcador y cuotas; menos si coinciden liga y hora)
 PARTE_2 = 0.55              # parte de los goles que llega en la 2ª parte
 # Corrección según el marcador al descanso (ajustada en 11.876 partidos, estable en 2023-25 y 2025-27):
 # con 0 goles la 2ª parte trae algo menos de lo esperado; con 1 gol, algo más.
@@ -202,8 +202,13 @@ def avisar(liga: str, inicio_utc: str) -> list[str]:
     plan = [p for p in leer(HOY, {}).get("partidos", []) if p["liga"] == liga and p["inicio_utc"] == inicio_utc]
     if not plan or not clave:
         return []
-    url = f"https://api.the-odds-api.com/v4/sports/{DEPORTES[liga]}/scores?" + urllib.parse.urlencode({"apiKey": clave})
-    marcadores, restantes = _pedir(url)
+    base = f"https://api.the-odds-api.com/v4/sports/{DEPORTES[liga]}"
+    marcadores, restantes = _pedir(f"{base}/scores?" + urllib.parse.urlencode({"apiKey": clave}))
+    try:  # cuotas en directo de las casas españolas (1 crédito más); sin ellas, el aviso sale igual
+        eventos, restantes = _pedir(f"{base}/odds?" + urllib.parse.urlencode(
+            {"apiKey": clave, "regions": "eu", "markets": "totals", "oddsFormat": "decimal"}))
+    except Exception:  # noqa: BLE001
+        eventos = []
     registro, textos = leer(REGISTRO, []), []
     for p in plan:
         local = emparejar_equipo(p["local"], [m["home_team"] for m in marcadores])
@@ -214,20 +219,69 @@ def avisar(liga: str, inicio_utc: str) -> list[str]:
         g = {s["name"]: int(s["score"]) for s in mc["scores"]}
         gl, gv = g.get(mc["home_team"], 0), g.get(mc["away_team"], 0)
         lam2 = p["goles_esperados"] * PARTE_2 * FACTOR_DESCANSO.get(gl + gv, 1.0)
+        ev = next((e for e in eventos if e["id"] == mc["id"]), None)
+        pagan = {}  # línea -> (mejor cuota de una casa española, casa)
+        for casa in (ev or {}).get("bookmakers", []):
+            nombre = CASAS.get(casa["title"])
+            for m in casa.get("markets", []) if nombre else []:
+                for o in m.get("outcomes", []) if m["key"] == "totals" else []:
+                    linea_o = float(o.get("point", 0))
+                    if o["name"] == "Over" and linea_o % 1 == 0.5 and float(o["price"]) > pagan.get(linea_o, (0,))[0]:
+                        pagan[linea_o] = (float(o["price"]), nombre)
         partes = []
         for extra in (1, 2, 3):
             linea = gl + gv + extra - 0.5
             prob = prob_al_menos(extra, lam2)
             minima = max(1.50, (1 + VALOR_MINIMO) / prob)
-            partes.append(f"Más de {str(linea).replace('.', ',')} → justa {1 / prob:.2f} · mínima {minima:.2f}".replace(".", ",", 2))
+            texto = f"Más de {linea:.1f} → justa {1 / prob:.2f} · mínima {minima:.2f}"
+            if linea in pagan:
+                cuota, casa = pagan[linea]
+                texto += f" · {casa} paga {cuota:.2f} {'✅' if cuota >= minima else '❌'}"
+            partes.append(texto.replace(".", ","))
             registro.append({"fecha": inicio_utc[:10], "liga": liga, "local": p["local"], "visitante": p["visitante"],
                              "revisado": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M"), "goles_descanso": gl + gv,
-                             "linea": linea, "cuota": None, "casa": None, "prob": round(prob, 4),
+                             "linea": linea, "cuota": pagan.get(linea, (None,))[0], "casa": pagan.get(linea, (None, None))[1],
+                             "prob": round(prob, 4),
                              "cuota_justa": round(1 / prob, 2), "cuota_minima": round(minima, 2), "valor": None,
-                             "aviso": True, "resultado": None, "unidades": None})
+                             # aviso = una casa española pagaba la mínima: solo esas cuentan como apuesta
+                             "aviso": linea in pagan and pagan[linea][0] >= minima, "resultado": None, "unidades": None})
         textos.append(f"AVISO ⏸️ {mc['home_team']} {gl}-{gv} {mc['away_team']} (descanso): " + " · ".join(partes))
     escribir(REGISTRO, registro)
     print(f"Créditos restantes: {restantes}")
+    return textos
+
+
+def repaso(dia: date) -> list[str]:
+    """Qué habría avisado el sistema en los descansos de un día ya jugado y si se cumplió.
+
+    Usa los resultados descargados (marcador al descanso y final) y la misma selección por liga.
+    Las cuotas en directo de entonces no se conocen: se dice la mínima que habría hecho falta.
+    """
+    from predictor.descargar import LIGAS, PRINCIPALES
+    principales = {LIGAS[l][0] for l in PRINCIPALES} - LIGAS_FUERA
+    prioridad = prioridad_ligas()
+    candidatos = []
+    for f in leer_filas([cli.DESCARGAS]):
+        if not f.get("HTHG") or f.get("Div") not in principales:
+            continue
+        try:
+            if _fecha(f["Date"]) != dia:
+                continue
+        except ValueError:
+            continue
+        justo = precio_justo(f, "Goles 2.5")
+        if not justo or justo[0][0] < PROB_MINIMA_PREVIA:
+            continue
+        candidatos.append((prioridad.get(f["Div"], 5.0), f, justo[0][0]))
+    textos = []
+    for _, f, p in sorted(candidatos, key=lambda c: -c[0])[:MAXIMO_POR_DIA]:
+        ht, ft = int(f["HTHG"]) + int(f["HTAG"]), int(f["FTHG"]) + int(f["FTAG"])
+        lam2 = goles_esperados(p) * PARTE_2 * FACTOR_DESCANSO.get(ht, 1.0)
+        prob = prob_al_menos(2, lam2)
+        minima = max(1.50, (1 + VALOR_MINIMO) / prob)
+        cumple = ft - ht >= 2
+        textos.append(f"{f['HomeTeam']} - {f['AwayTeam']}: descanso {f['HTHG']}-{f['HTAG']}, final {f['FTHG']}-{f['FTAG']} · "
+                      f"«más de {ht + 1.5:.1f}» (mínima {minima:.2f}) {'✅ se cumplió' if cumple else '❌ no se cumplió'}".replace(".", ","))
     return textos
 
 
@@ -253,7 +307,7 @@ def liquidar() -> int:
         r["resultado"] = f"{fin[0]['FTHG']}-{fin[0]['FTAG']}"
         r["acierto"] = gana
         # Sin cuota (avisos de solo marcador) se mide el acierto frente a lo previsto, no el dinero.
-        r["unidades"] = round(r["cuota"] - 1 if gana else -1.0, 2) if r["cuota"] else None
+        r["unidades"] = round(r["cuota"] - 1 if gana else -1.0, 2) if r["cuota"] and r["aviso"] else None
         hechos += 1
     escribir(REGISTRO, registro)
     return hechos
@@ -264,11 +318,12 @@ def main() -> None:
     parser.add_argument("--preseleccionar", nargs="?", const="hoy", metavar="AAAA-MM-DD")
     parser.add_argument("--revisar", nargs=2, metavar=("LIGA", "INICIO_UTC"))
     parser.add_argument("--liquidar", action="store_true")
+    parser.add_argument("--repaso", metavar="AAAA-MM-DD", help="Qué habría avisado un día ya jugado.")
     parser.add_argument("--avisar", nargs=2, metavar=("LIGA", "INICIO_UTC"), help="Solo marcador y cuotas justas.")
     args = parser.parse_args()
     if args.liquidar:
         print(f"Liquidadas: {liquidar()}")
-        avisos = [r for r in leer(REGISTRO, []) if r.get("acierto") is not None and r["cuota"] is None]
+        avisos = [r for r in leer(REGISTRO, []) if r.get("acierto") is not None and r.get("cuota_minima")]
         if avisos:
             print(f"  avisos de descanso: {len(avisos)} líneas · acertadas {sum(r['acierto'] for r in avisos)} "
                   f"(se esperaban {sum(r['prob'] for r in avisos):.1f})")
@@ -284,6 +339,9 @@ def main() -> None:
                   f"más de 2,5 al {100 * p['p_previa']:.0f} %, {p['goles_esperados']} goles esperados")
         for r in sel["revisiones"]:
             print(f"  revisar {r['liga']} {r['inicio_utc']} a las {r['revisar_utc']}")
+    if args.repaso:
+        for t in repaso(date.fromisoformat(args.repaso)) or ["Aún no están los resultados con el descanso de ese día."]:
+            print(t)
     if args.avisar:
         for t in avisar(*args.avisar):
             print(t)
