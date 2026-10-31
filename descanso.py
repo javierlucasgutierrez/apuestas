@@ -37,6 +37,14 @@ PARTE_2 = 0.55              # parte de los goles que llega en la 2ª parte
 # Corrección según el marcador al descanso (ajustada en 11.876 partidos, estable en 2023-25 y 2025-27):
 # con 0 goles la 2ª parte trae algo menos de lo esperado; con 1 gol, algo más.
 FACTOR_DESCANSO = {0: 0.95, 1: 1.02}
+# Con 1 gol importa quién gana: si gana el visitante, el local aprieta y llegan más goles (estable en ambos periodos).
+FACTOR_MARCADOR = {(0, 0): 0.95, (1, 0): 1.01, (0, 1): 1.05}
+# Marcadores que mejor rindieron en el backtest (línea +1,5): se destacan en el aviso.
+MARCADORES_FAVORABLES = {(0, 1): "0-1, el que mejor rinde (+12 %)", (0, 0): "0-0 (+9 %)"}
+
+
+def factor(local: int, visitante: int) -> float:
+    return FACTOR_MARCADOR.get((local, visitante), FACTOR_DESCANSO.get(local + visitante, 1.0))
 VALOR_MINIMO = 0.05
 MINUTOS_HASTA_DESCANSO = 52
 CASAS = {k: v for k, v in CASAS_ESPANA.items() if k != "B365"}  # Bet365 no está en The Odds API
@@ -218,7 +226,7 @@ def avisar(liga: str, inicio_utc: str) -> list[str]:
             continue
         g = {s["name"]: int(s["score"]) for s in mc["scores"]}
         gl, gv = g.get(mc["home_team"], 0), g.get(mc["away_team"], 0)
-        lam2 = p["goles_esperados"] * PARTE_2 * FACTOR_DESCANSO.get(gl + gv, 1.0)
+        lam2 = p["goles_esperados"] * PARTE_2 * factor(gl, gv)
         ev = next((e for e in eventos if e["id"] == mc["id"]), None)
         pagan = {}  # línea -> (mejor cuota de una casa española, casa)
         for casa in (ev or {}).get("bookmakers", []):
@@ -245,7 +253,9 @@ def avisar(liga: str, inicio_utc: str) -> list[str]:
                              "cuota_justa": round(1 / prob, 2), "cuota_minima": round(minima, 2), "valor": None,
                              # aviso = una casa española pagaba la mínima: solo esas cuentan como apuesta
                              "aviso": linea in pagan and pagan[linea][0] >= minima, "resultado": None, "unidades": None})
-        textos.append(f"AVISO ⏸️ {mc['home_team']} {gl}-{gv} {mc['away_team']} (descanso): " + " · ".join(partes))
+        destacado = MARCADORES_FAVORABLES.get((gl, gv))
+        textos.append(f"AVISO ⏸️ {mc['home_team']} {gl}-{gv} {mc['away_team']} (descanso)"
+                      + (f" ⭐ marcador favorable: {destacado}" if destacado else "") + ": " + " · ".join(partes))
     escribir(REGISTRO, registro)
     print(f"Créditos restantes: {restantes}")
     return textos
@@ -276,7 +286,7 @@ def repaso(dia: date) -> list[str]:
     textos = []
     for _, f, p in sorted(candidatos, key=lambda c: -c[0])[:MAXIMO_POR_DIA]:
         ht, ft = int(f["HTHG"]) + int(f["HTAG"]), int(f["FTHG"]) + int(f["FTAG"])
-        lam2 = goles_esperados(p) * PARTE_2 * FACTOR_DESCANSO.get(ht, 1.0)
+        lam2 = goles_esperados(p) * PARTE_2 * factor(int(f["HTHG"]), int(f["HTAG"]))
         prob = prob_al_menos(2, lam2)
         minima = max(1.50, (1 + VALOR_MINIMO) / prob)
         cumple = ft - ht >= 2
