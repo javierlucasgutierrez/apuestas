@@ -574,30 +574,34 @@ pintarHistorial();
 pintarMisApuestas();
 pintarSistema();
 
+// Los datos del día se publican como archivos junto a la página (datos/*.json); si faltan, se leen
+// del almacén de la página como antes. Lo que apunta el usuario («apuestas») vive en el almacén.
+async function leerDatos(nombre, doc) {
+  try {
+    const r = await fetch(`datos/${nombre}.json`, {cache: "no-store"});
+    if (r.ok) return await r.json();
+  } catch (e) {}
+  if (!db) return null;
+  try { const s = await db.doc(doc).get(); return s.exists ? s.data() : null; } catch (e) { return null; }
+}
+function ponerPartidos(d) {
+  partidos = (d && d.partidos) || [];
+  extra = d;
+  pintarHistorial();
+  $("#calc-nota").textContent = partidos.length
+    ? `${partidos.length} partidos de los próximos 7 días (actualizado ${d.actualizado}). Elige, escribe la cuota de tu casa y te digo si apostar.`
+    : "Todavía no hay partidos cargados. Se actualizan cada mañana.";
+  opcionesPartidos(); calcular(); rellenarFiltros(); pintarTabla(); pintarSistema();
+}
 (async () => {
   db = window.claude ? await window.claude.use("db") : null;
-  if (!db) {
-    $("#semana-nota").textContent = "Abre esta página desde tu cuenta de Claude para ver los picks.";
-    return;
-  }
-  db.doc("semana/actual").onSnapshot((s) => { semana = s.exists ? s.data() : null; pintarSemana(); pintarHistorial(); },
-    () => { $("#semana-nota").textContent = "No se pueden cargar los picks ahora mismo. Vuelve a abrir la página en un rato."; });
-  db.doc("historial/todo").onSnapshot((s) => { historial = (s.exists && s.data().picks) || []; pintarHistorial(); }, () => {});
-  db.collection("apuestas").onSnapshot((q) => { marcas = {}; for (const d of q.docs) marcas[d.id] = d.data(); pintarSemana(); pintarMisApuestas(); pintarSistema(); }, () => {});
-  db.doc("sistema/actual").onSnapshot((s) => { sistema = s.exists ? s.data() : null; pintarSistema(); pintarPronosticos(); },
-    () => { $("#sis-picks").innerHTML = `<div class="vacio">No se puede cargar ahora mismo.</div>`; });
-  db.doc("partidos/proximos").onSnapshot((s) => {
-    partidos = (s.exists && s.data().partidos) || [];
-    extra = s.exists ? s.data() : null;
-    pintarHistorial();
-    $("#calc-nota").textContent = partidos.length
-      ? `${partidos.length} partidos de los próximos 7 días (actualizado ${s.data().actualizado}). Elige, escribe la cuota de tu casa y te digo si apostar.`
-      : "Todavía no hay partidos cargados. Se actualizan cada mañana.";
-    opcionesPartidos();
-    calcular();
-    rellenarFiltros();
-    pintarTabla();
-    pintarSistema();
-  }, () => { $("#calc-nota").textContent = "No se pueden cargar los partidos ahora mismo."; });
+  const [sem, hist, sis, par] = await Promise.all([leerDatos("semana_actual", "semana/actual"),
+    leerDatos("historial_todo", "historial/todo"), leerDatos("sistema_actual", "sistema/actual"),
+    leerDatos("partidos", "partidos/proximos")]);
+  semana = sem; historial = (hist && hist.picks) || []; sistema = sis;
+  pintarSemana(); pintarHistorial(); pintarSistema(); pintarPronosticos();
+  ponerPartidos(par);
+  if (!sis && !par) $("#sis-picks").innerHTML = `<div class="vacio">No se pueden cargar los datos ahora mismo. Vuelve a abrir la página en un rato.</div>`;
+  if (db) db.collection("apuestas").onSnapshot((q) => { marcas = {}; for (const d of q.docs) marcas[d.id] = d.data(); pintarSemana(); pintarMisApuestas(); pintarSistema(); }, () => {});
 })();
 </script>
