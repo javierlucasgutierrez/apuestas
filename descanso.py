@@ -40,7 +40,18 @@ FACTOR_DESCANSO = {0: 0.95, 1: 1.02}
 # Con 1 gol importa quién gana: si gana el visitante, el local aprieta y llegan más goles (estable en ambos periodos).
 FACTOR_MARCADOR = {(0, 0): 0.95, (1, 0): 1.01, (0, 1): 1.05}
 # Marcadores que mejor rindieron en el backtest (línea +1,5): se destacan en el aviso.
-MARCADORES_FAVORABLES = {(0, 1): "0-1, el que mejor rinde (+12 %)", (0, 0): "0-0 (+9 %)"}
+# CONDICIÓN ÓPTIMA (backtest a la cuota habitual de la casa, 4.050 partidos, +6,8 %: +6,5 / +7,4 en cada
+# periodo; +9,3 % si además era de pocos goles): al descanso 1-0 o 0-1 y va perdiendo el favorito o el
+# partido estaba igualado (el que pierde tenía al menos la probabilidad de ganar del otro menos 10 puntos).
+# Entonces «2 goles más» se apuesta en cuanto la casa paga la cuota justa. Si pierde el más débil: −2 %.
+MARGEN_IGUALADO = 0.10
+
+
+def condicion_optima(local: int, visitante: int, p_local: float | None, p_visitante: float | None) -> bool:
+    if (local, visitante) not in ((1, 0), (0, 1)) or p_local is None or p_visitante is None:
+        return False
+    pierde, gana = (p_local, p_visitante) if (local, visitante) == (0, 1) else (p_visitante, p_local)
+    return pierde >= gana - MARGEN_IGUALADO
 
 
 def factor(local: int, visitante: int) -> float:
@@ -117,17 +128,17 @@ def preseleccionar(dia: date | None = None) -> dict:
             liga = f.get("Div")
             if f.get("Date") != hoy or liga not in DEPORTES or liga in LIGAS_FUERA:
                 continue
+            modelo = modelo or panel.predictor()
+            equipos = modelo.goles[liga].equipos if liga in modelo.goles else []
+            local, visitante = emparejar_equipo(f["HomeTeam"], equipos), emparejar_equipo(f["AwayTeam"], equipos)
+            if not local or not visitante:
+                continue
+            pred = modelo.predecir(local, visitante, fecha=dia)
             justo = precio_justo(f, "Goles 2.5")
             if justo:
                 p = justo[0][0]
                 lam = goles_esperados(p)
             else:
-                modelo = modelo or panel.predictor()
-                equipos = modelo.goles[liga].equipos if liga in modelo.goles else []
-                local, visitante = emparejar_equipo(f["HomeTeam"], equipos), emparejar_equipo(f["AwayTeam"], equipos)
-                if not local or not visitante:
-                    continue
-                pred = modelo.predecir(local, visitante, fecha=dia)
                 p, lam = pred.probs["Goles +2.5"], pred.goles_local + pred.goles_visitante
             if p < PROB_MINIMA_PREVIA:
                 continue
@@ -140,8 +151,14 @@ def preseleccionar(dia: date | None = None) -> dict:
             candidatos.append({"liga": liga, "local": f["HomeTeam"], "visitante": f["AwayTeam"],
                                "inicio_utc": inicio.strftime("%Y-%m-%dT%H:%M"), "p_previa": round(p, 4),
                                "goles_esperados": round(lam, 2), "origen": "mercado" if justo else "modelo",
-                               "prioridad": round(prioridad.get(liga, 5.0), 1)})
-    elegidos = sorted(candidatos, key=lambda c: (-c["prioridad"], c["inicio_utc"]))[:MAXIMO_POR_DIA]
+                               "prioridad": round(prioridad.get(liga, 5.0), 1),
+                               "p_local": round(pred.probs["1"], 3), "p_visitante": round(pred.probs["2"], 3)})
+    # Se eligen los partidos donde es más probable la condición óptima: igualados (cualquier 1-0 o 0-1 la
+    # cumple) y de pocos goles (rinden más); la liga solo desempata.
+    def puntos(c):
+        return (10 * (abs(c["p_local"] - c["p_visitante"]) <= MARGEN_IGUALADO) + 5 * (c["p_previa"] < 0.5)
+                + c["prioridad"] / 3)
+    elegidos = sorted(candidatos, key=lambda c: (-puntos(c), c["inicio_utc"]))[:MAXIMO_POR_DIA]
     # Una revisión por liga y hora de inicio: así una sola consulta sirve para varios partidos.
     revisiones = sorted({(c["liga"], c["inicio_utc"]) for c in elegidos}, key=lambda x: x[1])
     salida = {"fecha": dia.isoformat(), "partidos": elegidos,
@@ -237,10 +254,12 @@ def avisar(liga: str, inicio_utc: str) -> list[str]:
                     if o["name"] == "Over" and linea_o % 1 == 0.5 and float(o["price"]) > pagan.get(linea_o, (0,))[0]:
                         pagan[linea_o] = (float(o["price"]), nombre)
         partes = []
+        optima = condicion_optima(gl, gv, p.get("p_local"), p.get("p_visitante"))
         for extra in (1, 2, 3):
             linea = gl + gv + extra - 0.5
             prob = prob_al_menos(extra, lam2)
-            minima = max(1.50, (1 + VALOR_MINIMO) / prob)
+            # En la condición óptima, «2 goles más» vale desde la cuota justa; lo demás pide un 5 % extra.
+            minima = max(1.50, (1.0 if optima and extra == 2 else 1 + VALOR_MINIMO) / prob)
             texto = f"Más de {linea:.1f} → justa {1 / prob:.2f} · mínima {minima:.2f}"
             if linea in pagan:
                 cuota, casa = pagan[linea]
@@ -252,10 +271,11 @@ def avisar(liga: str, inicio_utc: str) -> list[str]:
                              "prob": round(prob, 4),
                              "cuota_justa": round(1 / prob, 2), "cuota_minima": round(minima, 2), "valor": None,
                              # aviso = una casa española pagaba la mínima: solo esas cuentan como apuesta
-                             "aviso": linea in pagan and pagan[linea][0] >= minima, "resultado": None, "unidades": None})
-        destacado = MARCADORES_FAVORABLES.get((gl, gv))
+                             "aviso": linea in pagan and pagan[linea][0] >= minima, "optima": optima and extra == 2,
+                             "resultado": None, "unidades": None})
         textos.append(f"AVISO ⏸️ {mc['home_team']} {gl}-{gv} {mc['away_team']} (descanso)"
-                      + (f" ⭐ marcador favorable: {destacado}" if destacado else "") + ": " + " · ".join(partes))
+                      + (f" ⭐ CONDICIÓN ÓPTIMA: pierde el favorito o el partido estaba igualado → más de {gl + gv + 1.5:.1f} "
+                         f"si tu casa paga la mínima" if optima else "") + ": " + " · ".join(partes))
     escribir(REGISTRO, registro)
     print(f"Créditos restantes: {restantes}")
     return textos
