@@ -138,6 +138,45 @@ def revisar(liga: str, inicio_utc: str) -> list[dict]:
     return salida
 
 
+def avisar(liga: str, inicio_utc: str) -> list[str]:
+    """En el descanso: solo el marcador (1 crédito) y la cuota justa y mínima de cada «más de».
+
+    Es lo que pidió el usuario: se le avisa siempre y él mira la cuota en su casa.
+    Se apunta en el registro (sin cuota) para medir con el tiempo si esas líneas aciertan lo previsto.
+    """
+    clave = os.environ.get("ODDS_API_KEY") or cli.clave_odds()
+    plan = [p for p in leer(HOY, {}).get("partidos", []) if p["liga"] == liga and p["inicio_utc"] == inicio_utc]
+    if not plan or not clave:
+        return []
+    url = f"https://api.the-odds-api.com/v4/sports/{DEPORTES[liga]}/scores?" + urllib.parse.urlencode({"apiKey": clave})
+    marcadores, restantes = _pedir(url)
+    registro, textos = leer(REGISTRO, []), []
+    for p in plan:
+        mc = next((m for m in marcadores if emparejar_equipo(p["local"], [m["home_team"]]) and
+                   emparejar_equipo(p["visitante"], [m["away_team"]])), None)
+        if not mc or not mc.get("scores"):
+            textos.append(f"{p['local']} - {p['visitante']}: sin marcador todavía")
+            continue
+        g = {s["name"]: int(s["score"]) for s in mc["scores"]}
+        gl, gv = g.get(mc["home_team"], 0), g.get(mc["away_team"], 0)
+        lam2 = p["goles_esperados"] * PARTE_2
+        partes = []
+        for extra in (1, 2, 3):
+            linea = gl + gv + extra - 0.5
+            prob = prob_al_menos(extra, lam2)
+            minima = max(1.50, (1 + VALOR_MINIMO) / prob)
+            partes.append(f"Más de {str(linea).replace('.', ',')} → justa {1 / prob:.2f} · mínima {minima:.2f}".replace(".", ",", 2))
+            registro.append({"fecha": inicio_utc[:10], "liga": liga, "local": p["local"], "visitante": p["visitante"],
+                             "revisado": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M"), "goles_descanso": gl + gv,
+                             "linea": linea, "cuota": None, "casa": None, "prob": round(prob, 4),
+                             "cuota_justa": round(1 / prob, 2), "cuota_minima": round(minima, 2), "valor": None,
+                             "aviso": True, "resultado": None, "unidades": None})
+        textos.append(f"AVISO ⏸️ {mc['home_team']} {gl}-{gv} {mc['away_team']} (descanso): " + " · ".join(partes))
+    escribir(REGISTRO, registro)
+    print(f"Créditos restantes: {restantes}")
+    return textos
+
+
 def liquidar() -> int:
     finales = {}
     for f in leer_filas([cli.DESCARGAS]):
@@ -158,7 +197,9 @@ def liquidar() -> int:
         total = fin[1]
         gana = total > r["linea"]
         r["resultado"] = f"{fin[0]['FTHG']}-{fin[0]['FTAG']}"
-        r["unidades"] = round(r["cuota"] - 1 if gana else -1.0, 2)
+        r["acierto"] = gana
+        # Sin cuota (avisos de solo marcador) se mide el acierto frente a lo previsto, no el dinero.
+        r["unidades"] = round(r["cuota"] - 1 if gana else -1.0, 2) if r["cuota"] else None
         hechos += 1
     escribir(REGISTRO, registro)
     return hechos
@@ -169,9 +210,14 @@ def main() -> None:
     parser.add_argument("--preseleccionar", nargs="?", const="hoy", metavar="AAAA-MM-DD")
     parser.add_argument("--revisar", nargs=2, metavar=("LIGA", "INICIO_UTC"))
     parser.add_argument("--liquidar", action="store_true")
+    parser.add_argument("--avisar", nargs=2, metavar=("LIGA", "INICIO_UTC"), help="Solo marcador y cuotas justas.")
     args = parser.parse_args()
     if args.liquidar:
         print(f"Liquidadas: {liquidar()}")
+        avisos = [r for r in leer(REGISTRO, []) if r.get("acierto") is not None and r["cuota"] is None]
+        if avisos:
+            print(f"  avisos de descanso: {len(avisos)} líneas · acertadas {sum(r['acierto'] for r in avisos)} "
+                  f"(se esperaban {sum(r['prob'] for r in avisos):.1f})")
         hechos = [r for r in leer(REGISTRO, []) if r["unidades"] is not None]
         for grupo, lista in (("con aviso", [r for r in hechos if r["aviso"]]), ("todas", hechos)):
             if lista:
@@ -184,6 +230,9 @@ def main() -> None:
                   f"más de 2,5 al {100 * p['p_previa']:.0f} %, {p['goles_esperados']} goles esperados")
         for r in sel["revisiones"]:
             print(f"  revisar {r['liga']} {r['inicio_utc']} a las {r['revisar_utc']}")
+    if args.avisar:
+        for t in avisar(*args.avisar):
+            print(t)
     if args.revisar:
         for e in revisar(*args.revisar):
             if "nota" in e:
