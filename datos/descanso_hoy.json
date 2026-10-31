@@ -2,20 +2,14 @@
  "fecha": "2026-11-01",
  "partidos": [
   {
-   "liga": "I1",
-   "local": "Lazio",
-   "visitante": "Cagliari",
-   "inicio_utc": "2026-11-01T14:00",
-   "p_previa": 0.5355,
-   "goles_esperados": 2.82
-  },
-  {
-   "liga": "F1",
-   "local": "Paris FC",
-   "visitante": "AS Monaco",
-   "inicio_utc": "2026-11-01T16:15",
-   "p_previa": 0.5264,
-   "goles_esperados": 2.78
+   "liga": "SP2",
+   "local": "CD Eldense",
+   "visitante": "Granada CF",
+   "inicio_utc": "2026-11-01T13:00",
+   "p_previa": 0.496,
+   "goles_esperados": 2.66,
+   "origen": "mercado",
+   "prioridad": 17.9
   },
   {
    "liga": "SP2",
@@ -23,7 +17,29 @@
    "visitante": "Sporting Gijón",
    "inicio_utc": "2026-11-01T15:15",
    "p_previa": 0.516,
-   "goles_esperados": 2.74
+   "goles_esperados": 2.74,
+   "origen": "mercado",
+   "prioridad": 17.9
+  },
+  {
+   "liga": "SP2",
+   "local": "Burgos CF",
+   "visitante": "CD Castellón",
+   "inicio_utc": "2026-11-01T17:30",
+   "p_previa": 0.512,
+   "goles_esperados": 2.72,
+   "origen": "mercado",
+   "prioridad": 17.9
+  },
+  {
+   "liga": "SP2",
+   "local": "Tenerife",
+   "visitante": "Andorra CF",
+   "inicio_utc": "2026-11-01T20:00",
+   "p_previa": 0.469,
+   "goles_esperados": 2.39,
+   "origen": "modelo",
+   "prioridad": 17.9
   },
   {
    "liga": "E0",
@@ -31,14 +47,16 @@
    "visitante": "Arsenal",
    "inicio_utc": "2026-11-01T16:30",
    "p_previa": 0.5146,
-   "goles_esperados": 2.73
+   "goles_esperados": 2.73,
+   "origen": "mercado",
+   "prioridad": 13.1
   }
  ],
  "revisiones": [
   {
-   "liga": "I1",
-   "inicio_utc": "2026-11-01T14:00",
-   "revisar_utc": "2026-11-01T14:52:00Z"
+   "liga": "SP2",
+   "inicio_utc": "2026-11-01T13:00",
+   "revisar_utc": "2026-11-01T13:52:00Z"
   },
   {
    "liga": "SP2",
@@ -46,14 +64,19 @@
    "revisar_utc": "2026-11-01T16:07:00Z"
   },
   {
-   "liga": "F1",
-   "inicio_utc": "2026-11-01T16:15",
-   "revisar_utc": "2026-11-01T17:07:00Z"
-  },
-  {
    "liga": "E0",
    "inicio_utc": "2026-11-01T16:30",
    "revisar_utc": "2026-11-01T17:22:00Z"
+  },
+  {
+   "liga": "SP2",
+   "inicio_utc": "2026-11-01T17:30",
+   "revisar_utc": "2026-11-01T18:22:00Z"
+  },
+  {
+   "liga": "SP2",
+   "inicio_utc": "2026-11-01T20:00",
+   "revisar_utc": "2026-11-01T20:52:00Z"
   }
  ]
 }

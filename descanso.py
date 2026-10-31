@@ -19,7 +19,9 @@ import json
 import math
 import os
 import urllib.parse
+from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import app as cli
 from estrategias import CASAS_ESPANA
@@ -29,8 +31,8 @@ from predictor.valor import _fecha, leer_filas, precio_justo
 
 REGISTRO = os.path.join(cli.CARPETA, "datos", "descanso.json")
 HOY = os.path.join(cli.CARPETA, "datos", "descanso_hoy.json")
-PROB_MINIMA_PREVIA = 0.50   # «más de 2,5» antes del partido: partidos normales o de muchos goles
-MAXIMO_POR_DIA = 4
+PROB_MINIMA_PREVIA = 0.40   # «más de 2,5» antes del partido (los de pocos goles rinden igual o mejor)
+MAXIMO_POR_DIA = 5         # 1 crédito por revisión (y menos si coinciden liga y hora)
 PARTE_2 = 0.55              # parte de los goles que llega en la 2ª parte
 # Corrección según el marcador al descanso (ajustada en 11.876 partidos, estable en 2023-25 y 2025-27):
 # con 0 goles la 2ª parte trae algo menos de lo esperado; con 1 gol, algo más.
@@ -66,23 +68,72 @@ def prob_al_menos(k: int, lam: float) -> float:
     return 1 - sum(math.exp(-lam) * lam ** i / math.factorial(i) for i in range(k))
 
 
+# Rentabilidad de la línea +1,5 del descanso por liga en el backtest (2023-26, a la cuota mínima).
+# Ordena qué partidos se vigilan; con resultados reales se corrige (ver prioridad_ligas).
+BACKTEST_LIGAS = {"SP2": 17.9, "E0": 13.1, "N1": 12.6, "D1": 9.3, "I2": 8.5, "I1": 8.5, "F2": 8.2,
+                  "SP1": 8.0, "F1": 7.5, "SC0": 7.4, "E1": 6.0}
+LIGAS_FUERA = {"D2"}  # 2. Bundesliga: +2,7 % e inestable
+
+
+def prioridad_ligas() -> dict[str, float]:
+    """Backtest por liga, corregido con los avisos reales ya liquidados (cuanto más datos, más pesan).
+
+    Cada aviso real cuenta: acertar por encima de lo previsto sube la liga y quedarse por debajo la baja.
+    Se mezcla como si el backtest valiera 200 avisos, para no reaccionar a rachas cortas.
+    """
+    reales = defaultdict(lambda: [0, 0.0])
+    for r in leer(REGISTRO, []):
+        if r.get("acierto") is not None and r.get("cuota_minima") and round(r["linea"] - r["goles_descanso"], 1) == 1.5:
+            gana = (r["cuota_minima"] - 1) if r["acierto"] else -1
+            reales[r["liga"]][0] += 1
+            reales[r["liga"]][1] += 100 * gana
+    return {liga: (BACKTEST_LIGAS.get(liga, 5.0) * 200 + reales[liga][1]) / (200 + reales[liga][0])
+            for liga in set(BACKTEST_LIGAS) | set(reales)}
+
+
 def preseleccionar(dia: date | None = None) -> dict:
-    """Partidos del día con más goles esperados según el precio justo (necesita las cuotas en vivo)."""
+    """Partidos del día que más rinden en el descanso: ligas mejores primero (backtest + resultados reales).
+
+    Goles esperados: del precio justo de Pinnacle/Betfair si lo hay; si no, del modelo propio.
+    Entran todos los tipos de partido desde un 40 % de «más de 2,5» (los de pocos goles rinden igual o mejor).
+    """
+    import panel  # el modelo propio solo hace falta aquí
     dia = dia or date.today()
     hoy = dia.strftime("%d/%m/%Y")
-    candidatos = []
-    for f in leer_filas([os.path.join(cli.DESCARGAS, "proximos_vivo.csv")]):
-        if f.get("Date") != hoy or f.get("Div") not in DEPORTES:
-            continue
-        justo = precio_justo(f, "Goles 2.5")
-        if not justo or justo[0][0] < PROB_MINIMA_PREVIA:
-            continue
-        # La hora del archivo es la peninsular de invierno (UTC+1).
-        inicio = datetime.strptime(f"{f['Date']} {f['Time']}", "%d/%m/%Y %H:%M") - timedelta(hours=1)
-        candidatos.append({"liga": f["Div"], "local": f["HomeTeam"], "visitante": f["AwayTeam"],
-                           "inicio_utc": inicio.strftime("%Y-%m-%dT%H:%M"), "p_previa": round(justo[0][0], 4),
-                           "goles_esperados": round(goles_esperados(justo[0][0]), 2)})
-    elegidos = sorted(candidatos, key=lambda c: -c["p_previa"])[:MAXIMO_POR_DIA]
+    madrid = ZoneInfo("Europe/Madrid")
+    prioridad = prioridad_ligas()
+    modelo = None
+    vistos, candidatos = set(), []
+    for archivo in ("proximos_vivo.csv", "calendario.csv"):
+        for f in leer_filas([os.path.join(cli.DESCARGAS, archivo)]):
+            liga = f.get("Div")
+            if f.get("Date") != hoy or liga not in DEPORTES or liga in LIGAS_FUERA:
+                continue
+            justo = precio_justo(f, "Goles 2.5")
+            if justo:
+                p = justo[0][0]
+                lam = goles_esperados(p)
+            else:
+                modelo = modelo or panel.predictor()
+                equipos = modelo.goles[liga].equipos if liga in modelo.goles else []
+                local, visitante = emparejar_equipo(f["HomeTeam"], equipos), emparejar_equipo(f["AwayTeam"], equipos)
+                if not local or not visitante:
+                    continue
+                pred = modelo.predecir(local, visitante, fecha=dia)
+                p, lam = pred.probs["Goles +2.5"], pred.goles_local + pred.goles_visitante
+            if p < PROB_MINIMA_PREVIA:
+                continue
+            inicio = datetime.strptime(f"{f['Date']} {f['Time']}", "%d/%m/%Y %H:%M").replace(tzinfo=madrid)
+            inicio = inicio.astimezone(timezone.utc)
+            clave = (liga, inicio.strftime("%Y-%m-%dT%H"), emparejar_equipo(f["HomeTeam"], [c[2] for c in vistos if c[0] == liga]) or f["HomeTeam"])
+            if any(v[0] == liga and v[1] == clave[1] and emparejar_equipo(f["HomeTeam"], [v[2]]) for v in vistos):
+                continue
+            vistos.add(clave)
+            candidatos.append({"liga": liga, "local": f["HomeTeam"], "visitante": f["AwayTeam"],
+                               "inicio_utc": inicio.strftime("%Y-%m-%dT%H:%M"), "p_previa": round(p, 4),
+                               "goles_esperados": round(lam, 2), "origen": "mercado" if justo else "modelo",
+                               "prioridad": round(prioridad.get(liga, 5.0), 1)})
+    elegidos = sorted(candidatos, key=lambda c: (-c["prioridad"], c["inicio_utc"]))[:MAXIMO_POR_DIA]
     # Una revisión por liga y hora de inicio: así una sola consulta sirve para varios partidos.
     revisiones = sorted({(c["liga"], c["inicio_utc"]) for c in elegidos}, key=lambda x: x[1])
     salida = {"fecha": dia.isoformat(), "partidos": elegidos,
@@ -155,8 +206,8 @@ def avisar(liga: str, inicio_utc: str) -> list[str]:
     marcadores, restantes = _pedir(url)
     registro, textos = leer(REGISTRO, []), []
     for p in plan:
-        mc = next((m for m in marcadores if emparejar_equipo(p["local"], [m["home_team"]]) and
-                   emparejar_equipo(p["visitante"], [m["away_team"]])), None)
+        local = emparejar_equipo(p["local"], [m["home_team"] for m in marcadores])
+        mc = next((m for m in marcadores if m["home_team"] == local), None)
         if not mc or not mc.get("scores"):
             textos.append(f"{p['local']} - {p['visitante']}: sin marcador todavía")
             continue

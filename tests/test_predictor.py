@@ -411,5 +411,23 @@ class TestCalendario(unittest.TestCase):
         self.assertEqual(filas[1]["Date"], "01/01/2027")  # medianoche y media en España: ya es otro día
 
 
+class TestDescanso(unittest.TestCase):
+    def test_goles_esperados_y_segunda_parte(self):
+        import descanso
+        lam = descanso.goles_esperados(0.52)
+        self.assertAlmostEqual(1 - descanso.prob_al_menos(3, lam), 1 - 0.52, places=3)  # «menos de 2,5»
+        # Partido normal al descanso: ≥1 gol más en la 2ª parte ≈ 77-78 % (dato real: 76,9 %)
+        self.assertAlmostEqual(descanso.prob_al_menos(1, lam * descanso.PARTE_2), 0.78, delta=0.02)
+
+    def test_prioridad_sin_datos_reales_es_el_backtest(self):
+        import descanso
+        original = descanso.REGISTRO
+        descanso.REGISTRO = os.path.join(tempfile.mkdtemp(), "no_existe.json")
+        try:
+            self.assertEqual(round(descanso.prioridad_ligas()["SP2"], 1), descanso.BACKTEST_LIGAS["SP2"])
+        finally:
+            descanso.REGISTRO = original
+
+
 if __name__ == "__main__":
     unittest.main()
