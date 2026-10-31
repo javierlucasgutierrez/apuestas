@@ -32,7 +32,8 @@ from predictor.valor import _fecha, leer_filas, precio_justo
 REGISTRO = os.path.join(cli.CARPETA, "datos", "descanso.json")
 HOY = os.path.join(cli.CARPETA, "datos", "descanso_hoy.json")
 PROB_MINIMA_PREVIA = 0.40   # «más de 2,5» antes del partido (los de pocos goles rinden igual o mejor)
-MAXIMO_POR_DIA = 4         # 2 créditos por revisión (marcador y cuotas; menos si coinciden liga y hora)
+MAXIMO_POR_DIA = 4         # partidos mínimos a vigilar si pocos cumplen la condición
+MAXIMO_REVISIONES = 12     # consultas al día como mucho (2 créditos cada una; una sirve para la misma liga y hora)
 PARTE_2 = 0.55              # parte de los goles que llega en la 2ª parte
 # Corrección según el marcador al descanso (ajustada en 11.876 partidos, estable en 2023-25 y 2025-27):
 # con 0 goles la 2ª parte trae algo menos de lo esperado; con 1 gol, algo más.
@@ -183,7 +184,17 @@ def preseleccionar(dia: date | None = None) -> dict:
     def puntos(c):
         return (8 * buen_atacante(c["local_gf"], c["local_tiros"]) + 8 * buen_atacante(c["visit_gf"], c["visit_tiros"])
                 + c["prioridad"] / 3)
-    elegidos = sorted(candidatos, key=lambda c: (-puntos(c), c["inicio_utc"]))[:MAXIMO_POR_DIA]
+    # Entran todos los partidos con los dos equipos buenos atacantes (si no llegan a MAXIMO_POR_DIA, se
+    # completa con los mejores), sin pasar de MAXIMO_REVISIONES consultas de liga y hora.
+    elegidos, franjas = [], set()
+    for i, c in enumerate(sorted(candidatos, key=lambda c: (-puntos(c), c["inicio_utc"]))):
+        franja = (c["liga"], c["inicio_utc"])
+        if puntos(c) < 16 and i >= MAXIMO_POR_DIA:
+            break
+        if franja not in franjas and len(franjas) >= MAXIMO_REVISIONES:
+            continue
+        franjas.add(franja)
+        elegidos.append(c)
     # Una revisión por liga y hora de inicio: así una sola consulta sirve para varios partidos.
     revisiones = sorted({(c["liga"], c["inicio_utc"]) for c in elegidos}, key=lambda x: x[1])
     salida = {"fecha": dia.isoformat(), "partidos": elegidos,
