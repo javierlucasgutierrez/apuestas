@@ -1,0 +1,59 @@
+{
+ "fecha": "2026-11-01",
+ "partidos": [
+  {
+   "liga": "I1",
+   "local": "Lazio",
+   "visitante": "Cagliari",
+   "inicio_utc": "2026-11-01T14:00",
+   "p_previa": 0.5355,
+   "goles_esperados": 2.82
+  },
+  {
+   "liga": "F1",
+   "local": "Paris FC",
+   "visitante": "AS Monaco",
+   "inicio_utc": "2026-11-01T16:15",
+   "p_previa": 0.5264,
+   "goles_esperados": 2.78
+  },
+  {
+   "liga": "SP2",
+   "local": "AD Ceuta FC",
+   "visitante": "Sporting Gijón",
+   "inicio_utc": "2026-11-01T15:15",
+   "p_previa": 0.516,
+   "goles_esperados": 2.74
+  },
+  {
+   "liga": "E0",
+   "local": "Liverpool",
+   "visitante": "Arsenal",
+   "inicio_utc": "2026-11-01T16:30",
+   "p_previa": 0.5146,
+   "goles_esperados": 2.73
+  }
+ ],
+ "revisiones": [
+  {
+   "liga": "I1",
+   "inicio_utc": "2026-11-01T14:00",
+   "revisar_utc": "2026-11-01T14:52:00Z"
+  },
+  {
+   "liga": "SP2",
+   "inicio_utc": "2026-11-01T15:15",
+   "revisar_utc": "2026-11-01T16:07:00Z"
+  },
+  {
+   "liga": "F1",
+   "inicio_utc": "2026-11-01T16:15",
+   "revisar_utc": "2026-11-01T17:07:00Z"
+  },
+  {
+   "liga": "E0",
+   "inicio_utc": "2026-11-01T16:30",
+   "revisar_utc": "2026-11-01T17:22:00Z"
+  }
+ ]
+}
