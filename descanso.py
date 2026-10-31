@@ -32,6 +32,9 @@ HOY = os.path.join(cli.CARPETA, "datos", "descanso_hoy.json")
 PROB_MINIMA_PREVIA = 0.50   # «más de 2,5» antes del partido: partidos normales o de muchos goles
 MAXIMO_POR_DIA = 4
 PARTE_2 = 0.55              # parte de los goles que llega en la 2ª parte
+# Corrección según el marcador al descanso (ajustada en 11.876 partidos, estable en 2023-25 y 2025-27):
+# con 0 goles la 2ª parte trae algo menos de lo esperado; con 1 gol, algo más.
+FACTOR_DESCANSO = {0: 0.95, 1: 1.02}
 VALOR_MINIMO = 0.05
 MINUTOS_HASTA_DESCANSO = 52
 CASAS = {k: v for k, v in CASAS_ESPANA.items() if k != "B365"}  # Bet365 no está en The Odds API
@@ -110,7 +113,7 @@ def revisar(liga: str, inicio_utc: str) -> list[dict]:
             salida.append({**p, "nota": "sin marcador o sin cuotas en directo"})
             continue
         goles = sum(int(s["score"]) for s in mc["scores"])
-        lam2 = p["goles_esperados"] * PARTE_2
+        lam2 = p["goles_esperados"] * PARTE_2 * FACTOR_DESCANSO.get(goles, 1.0)
         mejores = {}
         for casa in ev.get("bookmakers", []):
             nombre = CASAS.get(casa["title"])
@@ -159,7 +162,7 @@ def avisar(liga: str, inicio_utc: str) -> list[str]:
             continue
         g = {s["name"]: int(s["score"]) for s in mc["scores"]}
         gl, gv = g.get(mc["home_team"], 0), g.get(mc["away_team"], 0)
-        lam2 = p["goles_esperados"] * PARTE_2
+        lam2 = p["goles_esperados"] * PARTE_2 * FACTOR_DESCANSO.get(gl + gv, 1.0)
         partes = []
         for extra in (1, 2, 3):
             linea = gl + gv + extra - 0.5
