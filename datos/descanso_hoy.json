@@ -2,34 +2,6 @@
  "fecha": "2026-11-01",
  "partidos": [
   {
-   "liga": "E0",
-   "local": "Liverpool",
-   "visitante": "Arsenal",
-   "inicio_utc": "2026-11-01T16:30",
-   "p_previa": 0.4973,
-   "goles_esperados": 2.66,
-   "origen": "mercado",
-   "prioridad": 13.1,
-   "local_gf": 1.4,
-   "local_tiros": 5.2,
-   "visit_gf": 1.6,
-   "visit_tiros": 4.5
-  },
-  {
-   "liga": "N1",
-   "local": "Excelsior",
-   "visitante": "FC Twente Enschede",
-   "inicio_utc": "2026-11-01T13:30",
-   "p_previa": 0.5611,
-   "goles_esperados": 2.97,
-   "origen": "modelo",
-   "prioridad": 12.6,
-   "local_gf": 1.6,
-   "local_tiros": 3.8,
-   "visit_gf": 1.9,
-   "visit_tiros": 6.9
-  },
-  {
    "liga": "N1",
    "local": "Groningen",
    "visitante": "Sparta Rotterdam",
@@ -40,8 +12,10 @@
    "prioridad": 12.6,
    "local_gf": 2.4,
    "local_tiros": 5.5,
+   "local_total": 4.5,
    "visit_gf": 1.7,
-   "visit_tiros": 5.1
+   "visit_tiros": 5.1,
+   "visit_total": 4.1
   },
   {
    "liga": "D1",
@@ -54,64 +28,10 @@
    "prioridad": 9.3,
    "local_gf": 1.5,
    "local_tiros": 4.8,
+   "local_total": 3.6,
    "visit_gf": 1.2,
-   "visit_tiros": 5.0
-  },
-  {
-   "liga": "I1",
-   "local": "Lazio",
-   "visitante": "Cagliari",
-   "inicio_utc": "2026-11-01T14:00",
-   "p_previa": 0.4958,
-   "goles_esperados": 2.55,
-   "origen": "modelo",
-   "prioridad": 8.5,
-   "local_gf": 2.4,
-   "local_tiros": 5.1,
-   "visit_gf": 1.0,
-   "visit_tiros": 4.7
-  },
-  {
-   "liga": "I1",
-   "local": "Frosinone",
-   "visitante": "Torino",
-   "inicio_utc": "2026-11-01T14:00",
-   "p_previa": 0.6102,
-   "goles_esperados": 3.31,
-   "origen": "modelo",
-   "prioridad": 8.5,
-   "local_gf": 2.2,
-   "local_tiros": 6.3,
-   "visit_gf": 1.6,
-   "visit_tiros": 3.9
-  },
-  {
-   "liga": "I2",
-   "local": "Avellino",
-   "visitante": "Pisa",
-   "inicio_utc": "2026-11-01T14:00",
-   "p_previa": 0.4736,
-   "goles_esperados": 2.57,
-   "origen": "mercado",
-   "prioridad": 8.5,
-   "local_gf": 1.4,
-   "local_tiros": 4.6,
-   "visit_gf": 2.0,
-   "visit_tiros": 6.0
-  },
-  {
-   "liga": "I1",
-   "local": "Juventus",
-   "visitante": "Napoli",
-   "inicio_utc": "2026-11-01T19:45",
-   "p_previa": 0.4881,
-   "goles_esperados": 2.63,
-   "origen": "mercado",
-   "prioridad": 8.5,
-   "local_gf": 1.3,
-   "local_tiros": 5.1,
-   "visit_gf": 1.8,
-   "visit_tiros": 6.1
+   "visit_tiros": 5.0,
+   "visit_total": 3.3
   },
   {
    "liga": "SP1",
@@ -124,22 +44,10 @@
    "prioridad": 8.0,
    "local_gf": 1.5,
    "local_tiros": 4.9,
+   "local_total": 4.1,
    "visit_gf": 2.5,
-   "visit_tiros": 7.0
-  },
-  {
-   "liga": "SP1",
-   "local": "Athletic Bilbao",
-   "visitante": "Real Sociedad",
-   "inicio_utc": "2026-11-01T20:00",
-   "p_previa": 0.5295,
-   "goles_esperados": 2.76,
-   "origen": "modelo",
-   "prioridad": 8.0,
-   "local_gf": 1.4,
-   "local_tiros": 4.0,
-   "visit_gf": 1.9,
-   "visit_tiros": 5.2
+   "visit_tiros": 7.0,
+   "visit_total": 3.5
   },
   {
    "liga": "F1",
@@ -152,8 +60,10 @@
    "prioridad": 7.5,
    "local_gf": 1.9,
    "local_tiros": 5.1,
+   "local_total": 4.2,
    "visit_gf": 1.6,
-   "visit_tiros": 4.9
+   "visit_tiros": 4.9,
+   "visit_total": 3.5
   },
   {
    "liga": "F1",
@@ -166,8 +76,122 @@
    "prioridad": 7.5,
    "local_gf": 1.6,
    "local_tiros": 4.6,
+   "local_total": 2.8,
    "visit_gf": 1.5,
-   "visit_tiros": 4.8
+   "visit_tiros": 4.8,
+   "visit_total": 2.8
+  },
+  {
+   "liga": "E0",
+   "local": "Liverpool",
+   "visitante": "Arsenal",
+   "inicio_utc": "2026-11-01T16:30",
+   "p_previa": 0.4973,
+   "goles_esperados": 2.66,
+   "origen": "mercado",
+   "prioridad": 13.1,
+   "local_gf": 1.4,
+   "local_tiros": 5.2,
+   "local_total": 2.7,
+   "visit_gf": 1.6,
+   "visit_tiros": 4.5,
+   "visit_total": 2.2
+  },
+  {
+   "liga": "N1",
+   "local": "Excelsior",
+   "visitante": "FC Twente Enschede",
+   "inicio_utc": "2026-11-01T13:30",
+   "p_previa": 0.5611,
+   "goles_esperados": 2.97,
+   "origen": "modelo",
+   "prioridad": 12.6,
+   "local_gf": 1.6,
+   "local_tiros": 3.8,
+   "local_total": 3.5,
+   "visit_gf": 1.9,
+   "visit_tiros": 6.9,
+   "visit_total": 2.9
+  },
+  {
+   "liga": "I1",
+   "local": "Lazio",
+   "visitante": "Cagliari",
+   "inicio_utc": "2026-11-01T14:00",
+   "p_previa": 0.4958,
+   "goles_esperados": 2.55,
+   "origen": "modelo",
+   "prioridad": 8.5,
+   "local_gf": 2.4,
+   "local_tiros": 5.1,
+   "local_total": 3.2,
+   "visit_gf": 1.0,
+   "visit_tiros": 4.7,
+   "visit_total": 2.4
+  },
+  {
+   "liga": "I1",
+   "local": "Frosinone",
+   "visitante": "Torino",
+   "inicio_utc": "2026-11-01T14:00",
+   "p_previa": 0.6102,
+   "goles_esperados": 3.31,
+   "origen": "modelo",
+   "prioridad": 8.5,
+   "local_gf": 2.2,
+   "local_tiros": 6.3,
+   "local_total": 3.7,
+   "visit_gf": 1.6,
+   "visit_tiros": 3.9,
+   "visit_total": 3.2
+  },
+  {
+   "liga": "I2",
+   "local": "Avellino",
+   "visitante": "Pisa",
+   "inicio_utc": "2026-11-01T14:00",
+   "p_previa": 0.4736,
+   "goles_esperados": 2.57,
+   "origen": "mercado",
+   "prioridad": 8.5,
+   "local_gf": 1.4,
+   "local_tiros": 4.6,
+   "local_total": 2.4,
+   "visit_gf": 2.0,
+   "visit_tiros": 6.0,
+   "visit_total": 3.4
+  },
+  {
+   "liga": "I1",
+   "local": "Juventus",
+   "visitante": "Napoli",
+   "inicio_utc": "2026-11-01T19:45",
+   "p_previa": 0.4881,
+   "goles_esperados": 2.63,
+   "origen": "mercado",
+   "prioridad": 8.5,
+   "local_gf": 1.3,
+   "local_tiros": 5.1,
+   "local_total": 2.5,
+   "visit_gf": 1.8,
+   "visit_tiros": 6.1,
+   "visit_total": 2.9
+  },
+  {
+   "liga": "SP1",
+   "local": "Athletic Bilbao",
+   "visitante": "Real Sociedad",
+   "inicio_utc": "2026-11-01T20:00",
+   "p_previa": 0.5295,
+   "goles_esperados": 2.76,
+   "origen": "modelo",
+   "prioridad": 8.0,
+   "local_gf": 1.4,
+   "local_tiros": 4.0,
+   "local_total": 2.7,
+   "visit_gf": 1.9,
+   "visit_tiros": 5.2,
+   "visit_total": 3.7
   },
   {
    "liga": "F1",
@@ -180,8 +204,10 @@
    "prioridad": 7.5,
    "local_gf": 2.2,
    "local_tiros": 5.3,
+   "local_total": 3.6,
    "visit_gf": 1.4,
-   "visit_tiros": 4.2
+   "visit_tiros": 4.2,
+   "visit_total": 2.6
   }
  ],
  "revisiones": [
@@ -196,12 +222,12 @@
    "revisar_utc": "2026-11-01T14:52:00Z"
   },
   {
-   "liga": "I2",
+   "liga": "I1",
    "inicio_utc": "2026-11-01T14:00",
    "revisar_utc": "2026-11-01T14:52:00Z"
   },
   {
-   "liga": "I1",
+   "liga": "I2",
    "inicio_utc": "2026-11-01T14:00",
    "revisar_utc": "2026-11-01T14:52:00Z"
   },
@@ -231,12 +257,12 @@
    "revisar_utc": "2026-11-01T17:22:00Z"
   },
   {
-   "liga": "F1",
+   "liga": "I1",
    "inicio_utc": "2026-11-01T19:45",
    "revisar_utc": "2026-11-01T20:37:00Z"
   },
   {
-   "liga": "I1",
+   "liga": "F1",
    "inicio_utc": "2026-11-01T19:45",
    "revisar_utc": "2026-11-01T20:37:00Z"
   },
