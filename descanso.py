@@ -337,6 +337,11 @@ def avisar(liga: str, inicio_utc: str) -> list[str]:
                          if optima_00 else "") + ": " + " · ".join(partes))
     escribir(REGISTRO, registro)
     print(f"Créditos restantes: {restantes}")
+    if any("⭐" in t for t in textos):
+        import gestion
+        e = gestion.estado()
+        textos.append(f"GESTIÓN: 1 unidad = {e['unidad_euros']:.2f} € (bank {e['bank']:.2f} €; llevamos "
+                      f"{e['unidades']:+.2f} u en {e['apuestas']} apuestas)".replace(".", ","))
     return textos
 
 
