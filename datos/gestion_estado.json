@@ -1,11 +1,17 @@
 {
- "bank": 50.0,
- "unidad_euros": 2.5,
- "apuestas": 0,
- "aciertos": 0,
- "unidades": 0,
- "yield": 0.0,
+ "bank": 49.88,
+ "unidad_euros": 2.49,
+ "apuestas": 2,
+ "aciertos": 1,
+ "unidades": -0.05,
+ "yield": -2.5,
  "pendientes": 0,
- "por_mes": {},
- "actualizado": "2026-11-01"
+ "por_mes": {
+  "2026-11": {
+   "apuestas": 2,
+   "aciertos": 1,
+   "unidades": -0.05
+  }
+ },
+ "actualizado": "2026-11-02"
 }
