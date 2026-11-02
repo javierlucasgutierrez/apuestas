@@ -854,5 +854,23 @@
   "generado": "2026-11-01",
   "acierto": null,
   "beneficio": null
+ },
+ {
+  "fecha": "2026-11-02",
+  "liga": "SP2",
+  "local": "Tenerife",
+  "visitante": "Andorra",
+  "mercado": "Goles +2.5",
+  "prob": 0.469,
+  "frec": 0.35,
+  "pm": null,
+  "cuota": 2.32,
+  "b365": null,
+  "cuota_es": 2.14,
+  "casa_es": "Codere",
+  "regla": "modelo_valor",
+  "generado": "2026-11-02",
+  "acierto": null,
+  "beneficio": null
  }
 ]

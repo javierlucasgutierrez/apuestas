@@ -310,5 +310,31 @@
   "beneficio": null,
   "clv": null,
   "resultado": null
+ },
+ {
+  "n": 1,
+  "fecha": "2026-11-02",
+  "dia": "lun 02/11",
+  "liga": "SP2",
+  "nombre_liga": "LaLiga Hypermotion (España)",
+  "local": "Tenerife",
+  "visitante": "Andorra",
+  "mercado": "Goles +2.5",
+  "descripcion": "Más de 2,5 goles",
+  "prob": 47.0,
+  "cuota_justa": 2.13,
+  "cuota_minima": 2.23,
+  "cuota": 2.32,
+  "valor": null,
+  "origen": "modelo",
+  "familia": "Goles",
+  "stake_pct": 0.01,
+  "euros": 0.5,
+  "id": "2026-11-02_Tenerife_Andorra_Goles_+2.5",
+  "generado": "2026-11-02",
+  "estado": "pendiente",
+  "beneficio": null,
+  "clv": null,
+  "resultado": null
  }
 ]
